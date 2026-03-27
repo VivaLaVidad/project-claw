@@ -1,259 +1,205 @@
-// api/request.js - 工业级 HTTP + WebSocket 通信封装
+// api/request.js - Project Claw 完整 API 层 v3.0
 
-/**
- * 创建 HTTP 请求工厂
- * @param {string} base  服务器根地址
- * @param {string} token 内部鉴权 token（可选）
- */
-function createRequest(base, token) {
-  return function request({ method = 'GET', path, data, timeout = 15000 }) {
+// ─── 基础请求封装 ───
+function createRequest(baseUrl, token) {
+  return function request({ method = 'GET', path, data, timeout = 12000 } = {}) {
     return new Promise((resolve, reject) => {
-      const headers = { 'Content-Type': 'application/json' };
-      if (token) headers['x-internal-token'] = token;
-
+      const url = (baseUrl || '').replace(/\/$/, '') + path;
+      const header = { 'Content-Type': 'application/json' };
+      if (token) header['Authorization'] = `Bearer ${token}`;
       wx.request({
-        url: base.replace(/\/$/, '') + path,
-        method,
-        data,
-        header: headers,
+        url, method, data, header,
         timeout,
         success(res) {
           if (res.statusCode >= 200 && res.statusCode < 300) {
             resolve(res.data);
           } else {
-            reject({ code: res.statusCode, msg: JSON.stringify(res.data) });
+            reject({ code: res.statusCode, msg: res.data?.detail || res.data?.message || `HTTP ${res.statusCode}` });
           }
         },
-        fail(err) {
-          reject({ code: -1, msg: err.errMsg || '网络错误' });
-        },
+        fail(err) { reject({ code: -1, msg: err.errMsg || '网络错误' }); },
       });
     });
   };
 }
 
-// ─── A2A 对话 API ───
-
+// ─── 对话 API ───
 function DialogueAPI(request) {
   return {
-    /** 注册 C 端个性化画像 */
-    upsertClientProfile(profile) {
-      return request({ method: 'POST', path: '/a2a/dialogue/profile/client', data: profile });
+    upsertClientProfile(payload) {
+      return request({ method: 'POST', path: '/a2a/dialogue/profile/client', data: payload });
     },
-
-    /** 注册 B 端个性化画像 */
-    upsertMerchantProfile(profile) {
-      return request({ method: 'POST', path: '/a2a/dialogue/profile/merchant', data: profile });
+    upsertMerchantProfile(payload) {
+      return request({ method: 'POST', path: '/a2a/dialogue/profile/merchant', data: payload });
     },
-
-    /** 发起对话 */
-    start({ intent, merchantId, openingText }) {
-      return request({
-        method: 'POST',
-        path: '/a2a/dialogue/start',
-        data: { intent, merchant_id: merchantId, opening_text: openingText },
-      });
+    start(payload) {
+      return request({ method: 'POST', path: '/a2a/dialogue/start', data: payload });
     },
-
-    /** C 端发一轮 */
-    clientTurn({ sessionId, clientId, text, expectedPrice }) {
-      return request({
-        method: 'POST',
-        path: '/a2a/dialogue/client_turn',
-        data: { session_id: sessionId, client_id: clientId, text, expected_price: expectedPrice },
-      });
+    clientTurn(payload) {
+      return request({ method: 'POST', path: '/a2a/dialogue/client_turn', data: {
+        session_id: payload.sessionId,
+        client_id: payload.clientId,
+        text: payload.text,
+        expected_price: payload.expectedPrice || null,
+      }});
     },
-
-    /** 获取会话历史 */
     getSession(sessionId) {
       return request({ method: 'GET', path: `/a2a/dialogue/${sessionId}` });
     },
-
-    /** 关闭会话 */
     close(sessionId) {
-      return request({ method: 'POST', path: `/a2a/dialogue/${sessionId}/close` });
+      return request({ method: 'POST', path: `/a2a/dialogue/${sessionId}/close`, data: {} });
     },
   };
 }
 
 // ─── 意图广播 API ───
-
 function IntentAPI(request) {
   return {
-    /** C 端发起意图广播 */
-    broadcast({ clientId, location, demandText, maxPrice, timeout = 3.0 }) {
-      return request({
-        method: 'POST',
-        path: '/intent',
-        data: {
-          client_id: clientId,
-          location,
-          demand_text: demandText,
-          max_price: maxPrice,
-          timeout,
-        },
-      });
-    },
-
-    /** A2A 机器谈判意图 */
-    a2aIntent({ clientId, itemName, expectedPrice, maxDistanceKm = 8.0 }) {
-      return request({
-        method: 'POST',
-        path: '/a2a/intent',
-        data: {
-          client_id: clientId,
-          item_name: itemName,
-          expected_price: expectedPrice,
-          max_distance_km: maxDistanceKm,
-          timestamp: Date.now() / 1000,
-        },
-      });
+    broadcast(payload) {
+      return request({ method: 'POST', path: '/intent', data: {
+        client_id: payload.clientId,
+        location: payload.location || '小程序',
+        demand_text: payload.demandText,
+        max_price: payload.maxPrice,
+        timeout: payload.timeout || 3.0,
+        client_profile: payload.clientProfile || {},
+      }});
     },
   };
 }
 
-// ─── 健康 / 统计 API ───
-
+// ─── 系统 API ───
 function SystemAPI(request) {
   return {
-    health() {
-      return request({ method: 'GET', path: '/health' });
+    health()  { return request({ method: 'GET', path: '/health', timeout: 4000 }); },
+    stats()   { return request({ method: 'GET', path: '/stats',  timeout: 5000 }); },
+    orders(limit) { return request({ method: 'GET', path: `/orders?limit=${limit || 50}` }); },
+    orderDetail(intentId) { return request({ method: 'GET', path: `/orders/${intentId}` }); },
+    metrics() { return request({ method: 'GET', path: '/metrics', timeout: 5000 }); },
+  };
+}
+
+// ─── B/C Agent 全自动谈判 API ───
+function AgentNegotiationAPI(request) {
+  return {
+    startAutoNegotiation({ clientId, itemName, expectedPrice, maxDistanceKm, clientProfile }) {
+      return request({ method: 'POST', path: '/a2a/intent', data: {
+        client_id: clientId,
+        item_name: itemName,
+        expected_price: expectedPrice,
+        max_distance_km: maxDistanceKm || 8.0,
+        timestamp: Date.now() / 1000,
+        client_profile: clientProfile || {},
+      }});
     },
-    stats() {
-      return request({ method: 'GET', path: '/stats' });
+    pollResult(intentId) {
+      return request({ method: 'GET', path: `/a2a/intent/${intentId}/result` });
+    },
+    reportSatisfaction({ sessionId, clientId, score, priceScore, timeScore }) {
+      return request({ method: 'POST', path: '/a2a/dialogue/satisfaction', data: {
+        session_id: sessionId, client_id: clientId,
+        overall: score, price: priceScore, time: timeScore,
+      }});
+    },
+    executeTradeOrder({ merchantId, finalPrice, item, clientId, intentId }) {
+      return request({ method: 'POST', path: '/execute_trade', data: {
+        merchant_id: merchantId, final_price: finalPrice,
+        reply_text: item, client_id: clientId,
+        intent_id: intentId || '',
+        eta_minutes: 20,
+      }});
     },
   };
 }
 
-// ─── WebSocket 对话监听器 ───
+// ─── 画像 API ───
+function ProfileAPI(request) {
+  return {
+    getClientProfile(clientId) {
+      return request({ method: 'GET', path: `/profiles/client/${clientId}` });
+    },
+    getMerchantProfile(merchantId) {
+      return request({ method: 'GET', path: `/profiles/merchant/${merchantId}` });
+    },
+    upsertClientProfile(clientId, profile) {
+      return request({ method: 'POST', path: '/profiles/client', data: { client_id: clientId, profile } });
+    },
+    upsertMerchantProfile(merchantId, profile) {
+      return request({ method: 'POST', path: '/profiles/merchant', data: { merchant_id: merchantId, profile } });
+    },
+  };
+}
 
+// ─── WebSocket 实时对话监听器 ───
 class DialogueWSListener {
-  /**
-   * @param {string} wsBase        ws://host:port
-   * @param {string} clientId      C 端 ID
-   * @param {Function} onTurn      收到 turn 回调
-   * @param {Function} onError     错误回调
-   */
   constructor(wsBase, clientId, onTurn, onError) {
-    this._base = wsBase.replace(/\/$/, '');
+    this._wsBase = (wsBase || '').replace(/\/$/, '');
     this._clientId = clientId;
     this._onTurn = onTurn;
-    this._onError = onError || console.error;
-    this._socket = null;
-    this._closed = false;
+    this._onError = onError || (() => {});
+    this._task = null;
+    this._connected = false;
+    this._stopFlag = false;
     this._reconnectTimer = null;
-    this._reconnectDelay = 2000;
   }
 
   connect() {
-    if (this._closed) return;
-    const url = `${this._base}/ws/a2a/dialogue/client/${this._clientId}`;
-    console.log('[WS] connecting:', url);
+    this._stopFlag = false;
+    this._doConnect();
+  }
 
-    this._socket = wx.connectSocket({ url, fail: err => this._onError(err) });
+  disconnect() {
+    this._stopFlag = true;
+    if (this._reconnectTimer) clearTimeout(this._reconnectTimer);
+    if (this._task) {
+      try { this._task.close(); } catch(e) {}
+      this._task = null;
+    }
+    this._connected = false;
+  }
 
-    this._socket.onOpen(() => {
-      console.log('[WS] connected');
-      this._reconnectDelay = 2000;
+  _doConnect() {
+    if (this._stopFlag) return;
+    const url = `${this._wsBase}/ws/client/${this._clientId}`;
+    this._task = wx.connectSocket({
+      url,
+      header: { 'Content-Type': 'application/json' },
+      complete: () => {},
     });
-
-    this._socket.onMessage(({ data }) => {
+    this._task.onOpen(() => {
+      this._connected = true;
+    });
+    this._task.onMessage((res) => {
       try {
-        const msg = JSON.parse(data);
-        if (msg.type === 'a2a_dialogue_turn' && msg.turn) {
-          this._onTurn(msg.turn);
+        const msg = JSON.parse(res.data);
+        if (msg.type === 'a2a_dialogue_turn' || msg.type === 'dialogue_turn') {
+          this._onTurn(msg.turn || msg);
+        } else if (msg.type === 'offers') {
+          this._onTurn(msg);
         }
-      } catch (e) {
-        console.warn('[WS] parse error', e);
-      }
+      } catch(e) {}
     });
-
-    this._socket.onError(err => {
-      console.error('[WS] error', err);
+    this._task.onError((err) => {
+      this._connected = false;
       this._onError(err);
       this._scheduleReconnect();
     });
-
-    this._socket.onClose(() => {
-      console.warn('[WS] closed');
-      if (!this._closed) this._scheduleReconnect();
+    this._task.onClose(() => {
+      this._connected = false;
+      this._scheduleReconnect();
     });
   }
 
   _scheduleReconnect() {
-    clearTimeout(this._reconnectTimer);
-    this._reconnectTimer = setTimeout(() => {
-      this._reconnectDelay = Math.min(this._reconnectDelay * 1.5, 30000);
-      this.connect();
-    }, this._reconnectDelay);
+    if (this._stopFlag) return;
+    this._reconnectTimer = setTimeout(() => this._doConnect(), 3000);
   }
 
-  disconnect() {
-    this._closed = true;
-    clearTimeout(this._reconnectTimer);
-    if (this._socket) {
-      try { this._socket.close({}); } catch (e) {}
-      this._socket = null;
+  send(data) {
+    if (this._connected && this._task) {
+      this._task.send({ data: JSON.stringify(data) });
     }
   }
-}
-
-// ─── A2A 全自动谈判 API（B端Agent驱动）───
-
-function AgentNegotiationAPI(request) {
-  return {
-    /**
-     * 启动 B/C 双端 Agent 全自动谈判
-     * C端Agent分析预算偏好，B端Agent根据画像自动报价砍价
-     */
-    startAutoNegotiation({ clientId, itemName, expectedPrice, maxDistanceKm = 8.0 }) {
-      return request({
-        method: 'POST',
-        path: '/a2a/intent',
-        data: {
-          client_id: clientId,
-          item_name: itemName,
-          expected_price: expectedPrice,
-          max_distance_km: maxDistanceKm,
-          timestamp: Date.now() / 1000,
-          mode: 'auto',  // 全自动谈判模式
-        },
-      });
-    },
-
-    /** 查询自动谈判结果 */
-    pollResult(intentId) {
-      return request({ method: 'GET', path: `/a2a/intent/${intentId}/result` });
-    },
-
-    /** 获取推荐商家列表（B端Agent排序）*/
-    getRecommendedMerchants({ itemName, budget, limit = 5 }) {
-      return request({
-        method: 'POST',
-        path: '/a2a/match',
-        data: { item_name: itemName, budget, limit },
-      });
-    },
-
-    /** C端Agent上报满意度反馈（用于 B端 Agent 学习）*/
-    reportSatisfaction({ sessionId, clientId, score, priceScore, timeScore }) {
-      return request({
-        method: 'POST',
-        path: '/a2a/dialogue/satisfaction',
-        data: { session_id: sessionId, client_id: clientId,
-                overall: score, price: priceScore, time: timeScore },
-      });
-    },
-
-    /** 触发执行（通知 B端 Edge Box 实际下单）*/
-    executeTradeOrder({ merchantId, finalPrice, item, clientId }) {
-      return request({
-        method: 'POST',
-        path: '/api/v1/trade/execute',
-        data: { merchant_id: merchantId, final_price: finalPrice, item, client_id: clientId },
-      });
-    },
-  };
 }
 
 module.exports = {
@@ -262,5 +208,6 @@ module.exports = {
   IntentAPI,
   SystemAPI,
   AgentNegotiationAPI,
+  ProfileAPI,
   DialogueWSListener,
 };

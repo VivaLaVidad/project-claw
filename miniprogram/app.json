@@ -10,7 +10,8 @@
     "navigationBarBackgroundColor": "#1a1a2e",
     "navigationBarTitleText": "Project Claw",
     "navigationBarTextStyle": "white",
-    "backgroundColor": "#f5f5f5"
+    "backgroundColor": "#f5f5f7",
+    "enablePullDownRefresh": true
   },
   "tabBar": {
     "color": "#888888",
@@ -20,21 +21,15 @@
     "list": [
       {
         "pagePath": "pages/index/index",
-        "text": "发现",
-        "iconPath": "images/tab_discover.png",
-        "selectedIconPath": "images/tab_discover_active.png"
+        "text": "发现"
       },
       {
         "pagePath": "pages/orders/orders",
-        "text": "订单",
-        "iconPath": "images/tab_orders.png",
-        "selectedIconPath": "images/tab_orders_active.png"
+        "text": "订单"
       },
       {
         "pagePath": "pages/merchant/merchant",
-        "text": "商家",
-        "iconPath": "images/tab_merchant.png",
-        "selectedIconPath": "images/tab_merchant_active.png"
+        "text": "商家"
       }
     ]
   },
@@ -48,5 +43,7 @@
       "desc": "用于匹配附近商家"
     }
   },
-  "sitemapLocation": "sitemap.json"
+  "requiredBackgroundModes": [],
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
 }

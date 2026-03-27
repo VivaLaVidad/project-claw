@@ -1,103 +1,106 @@
 <!-- pages/merchant/merchant.wxml -->
 <view class="container">
 
-  <view class="page-header">
-    <text class="page-title">商家控制台</text>
-    <view class="online-badge {{isOnline ? 'online' : 'offline'}}">
-      <view class="status-dot {{isOnline ? 'online' : 'offline'}}"></view>
-      <text>{{isOnline ? '在线' : '离线'}}</text>
+  <!-- 顶部商家卡片 -->
+  <view class="merchant-hero">
+    <view class="hero-left">
+      <view class="avatar">🏪</view>
+      <view class="hero-info">
+        <text class="hero-name">{{profile.name || '我的店铺'}}</text>
+        <view class="hero-id" bindtap="onCopyId" data-id="{{merchantId}}">
+          <text class="id-text">{{merchantId}}</text>
+          <text class="id-copy">复制</text>
+        </view>
+      </view>
+    </view>
+    <view class="hero-right">
+      <view class="status-pill {{isOnline ? 'online' : 'offline'}}">
+        <view class="status-dot"></view>
+        <text>{{isOnline ? 'Agent在线' : '未连接'}}</text>
+      </view>
     </view>
   </view>
 
-  <!-- 服务统计 -->
-  <view wx:if="{{stats}}" class="card stats-card">
-    <view class="stats-title">📊 实时数据</view>
-    <view class="stats-grid">
-      <view class="stat-item">
-        <text class="stat-value">{{stats.online_merchants || 0}}</text>
-        <text class="stat-label">在线商家</text>
-      </view>
-      <view class="stat-item">
-        <text class="stat-value">{{stats.metrics.intent_total || 0}}</text>
-        <text class="stat-label">总意图数</text>
-      </view>
-      <view class="stat-item">
-        <text class="stat-value">{{stats.metrics.execute_success || 0}}</text>
-        <text class="stat-label">成交次数</text>
-      </view>
-      <view class="stat-item">
-        <text class="stat-value">{{stats.metrics.offer_total || 0}}</text>
-        <text class="stat-label">报价次数</text>
-      </view>
+  <!-- 实时数据罗盘 -->
+  <view class="stats-row">
+    <view class="stat-box">
+      <text class="stat-val green">{{stats.online_merchants || 0}}</text>
+      <text class="stat-label">在线商家</text>
     </view>
-    <view class="refresh-row" bindtap="onRefreshStats">↻ 刷新数据</view>
+    <view class="stat-box">
+      <text class="stat-val blue">{{totalNegotiations}}</text>
+      <text class="stat-label">谈判次数</text>
+    </view>
+    <view class="stat-box">
+      <text class="stat-val red">{{successRate}}%</text>
+      <text class="stat-label">成交率</text>
+    </view>
   </view>
 
-  <!-- 当前画像展示 -->
-  <view wx:if="{{profile}}" class="card">
-    <view class="panel-header" bindtap="onToggleProfileEdit">
-      <text class="panel-title">🏪 商家画像配置</text>
-      <text class="panel-arrow">{{showProfileEdit ? '▲' : '▼'}}</text>
+  <!-- B端Agent策略设置 -->
+  <view class="section-title">🧠 B端Agent谈判策略</view>
+  <view class="card">
+    <view class="profile-row">
+      <text class="profile-label">底价 ¥{{profile.bottom_price}}</text>
+      <slider min="5" max="100" value="{{profile.bottom_price}}" step="0.5"
+        data-key="bottom_price" bindchange="onSliderChange" activeColor="#e94560" />
     </view>
-
-    <block wx:if="{{!showProfileEdit}}">
-      <view class="profile-summary">
-        <view class="summary-row">
-          <text class="summary-label">商家 ID</text>
-          <text class="summary-value">{{profile.merchant_id}}</text>
-        </view>
-        <view class="summary-row">
-          <text class="summary-label">底价 / 常规价</text>
-          <text class="summary-value">¥{{profile.bottom_price}} / ¥{{profile.normal_price}}</text>
-        </view>
-        <view class="summary-row">
-          <text class="summary-label">最大让价</text>
-          <text class="summary-value">{{(profile.max_discount_rate*100).toFixed(0)}}%</text>
-        </view>
-        <view class="summary-row">
-          <text class="summary-label">配送时效</text>
-          <text class="summary-value">{{profile.delivery_time_minutes}} 分钟</text>
-        </view>
-        <view class="summary-row">
-          <text class="summary-label">质量评分</text>
-          <text class="summary-value">{{(profile.quality_score*100).toFixed(0)}}%</text>
-        </view>
-      </view>
-    </block>
-
-    <block wx:if="{{showProfileEdit && editProfile}}">
-      <view class="edit-form">
-        <view class="form-row">
-          <text class="form-label">底价 (¥)</text>
-          <input class="form-input" type="digit" value="{{editProfile.bottom_price}}"
-            data-key="bottom_price" bindinput="onEditField" />
-        </view>
-        <view class="form-row">
-          <text class="form-label">常规价 (¥)</text>
-          <input class="form-input" type="digit" value="{{editProfile.normal_price}}"
-            data-key="normal_price" bindinput="onEditField" />
-        </view>
-        <view class="form-row">
-          <text class="form-label">最大让价 (%)</text>
-          <input class="form-input" type="digit" value="{{editProfile.max_discount_rate * 100}}"
-            data-key="max_discount_rate" bindinput="onEditField" />
-        </view>
-        <view class="form-row">
-          <text class="form-label">配送时效 (分钟)</text>
-          <input class="form-input" type="number" value="{{editProfile.delivery_time_minutes}}"
-            data-key="delivery_time_minutes" bindinput="onEditField" />
-        </view>
-        <button class="btn-primary" bindtap="onSaveProfile"
-          loading="{{isLoading}}" disabled="{{isLoading}}">保存画像</button>
-      </view>
-    </block>
+    <view class="profile-row">
+      <text class="profile-label">正常售价 ¥{{profile.normal_price}}</text>
+      <slider min="5" max="200" value="{{profile.normal_price}}" step="0.5"
+        data-key="normal_price" bindchange="onSliderChange" activeColor="#e94560" />
+    </view>
+    <view class="profile-row">
+      <text class="profile-label">最大折扣 {{profile.max_discount_rate * 100}}%</text>
+      <slider min="0" max="30" value="{{profile.max_discount_rate * 100}}" step="1"
+        data-key="max_discount_rate" bindchange="onSliderChange" activeColor="#e94560" />
+    </view>
+    <view class="profile-row">
+      <text class="profile-label">配送时效 {{profile.delivery_time_minutes}}分钟</text>
+      <slider min="5" max="60" value="{{profile.delivery_time_minutes}}" step="1"
+        data-key="delivery_time_minutes" bindchange="onSliderChange" activeColor="#e94560" />
+    </view>
+    <view class="profile-row">
+      <text class="profile-label">品质评分 {{profile.quality_score * 100 | 0}}%</text>
+      <slider min="0" max="100" value="{{profile.quality_score * 100}}" step="1"
+        data-key="quality_score" bindchange="onSliderChange" activeColor="#e94560" />
+    </view>
+    <view class="toggle-row">
+      <text class="toggle-label">营业状态</text>
+      <switch checked="{{profile.is_open}}" bindchange="onToggleOpen" color="#30d158" />
+    </view>
+    <button class="save-btn" bindtap="onSaveProfile" loading="{{isLoading}}">
+      💾 同步到云端Agent
+    </button>
   </view>
 
-  <!-- 商家 ID 显示 -->
-  <view class="card merchant-id-card">
-    <text class="mid-label">当前商家节点 ID</text>
-    <text class="mid-value">{{merchantId}}</text>
-    <text class="mid-hint">请确保 B 端监听器以此 ID 连接云端</text>
+  <!-- 商家ID管理 -->
+  <view class="section-title">⚙️ 节点配置</view>
+  <view class="card">
+    <view class="config-row">
+      <text class="config-label">商家节点ID</text>
+      <view class="config-val-wrap">
+        <text class="config-val">{{merchantId}}</text>
+        <view class="config-edit-btn" bindtap="onChangeMerchantId">修改</view>
+      </view>
+    </view>
+    <view class="config-row">
+      <text class="config-label">Agent连接状态</text>
+      <text class="config-val {{wsStatus === 'connected' ? 'green' : 'red'}}">
+        {{wsStatus === 'connected' ? '✅ 已连接Railway' : '❌ 未连接'}}
+      </text>
+    </view>
+    <view class="config-row">
+      <text class="config-label">待处理意图</text>
+      <text class="config-val">{{stats.pending_intents || 0}}</text>
+    </view>
+    <button class="refresh-btn-full" bindtap="onRefreshStats">↻ 刷新状态</button>
+  </view>
+
+  <!-- 启动说明 -->
+  <view class="card tip-card">
+    <text class="tip-title">📡 如何启动B端Agent</text>
+    <text class="tip-text">在本地终端运行：\n.\start_edge.ps1\n\nAgent将自动连接Railway云端，接收C端砍价请求并自动报价。</text>
   </view>
 
 </view>

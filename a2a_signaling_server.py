@@ -691,7 +691,14 @@ async def client_ws(websocket: WebSocket, client_id: str):
 
 
 @app.websocket("/ws/a2a/merchant/{merchant_id}")
-async def a2a_merchant_ws(websocket: WebSocket, merchant_id: str, distance_km: float = 0.0):
+async def a2a_merchant_ws(websocket: WebSocket, merchant_id: str, distance_km: float = 0.0, token: str = ""):
+    # Token 校验（INTERNAL_API_TOKEN 未配置时开放）
+    _expected = settings.INTERNAL_API_TOKEN
+    if _expected and token != _expected:
+        await websocket.accept()
+        await websocket.send_text(json.dumps({"type":"error","error":"unauthorized"}))
+        await websocket.close(code=4001)
+        return
     await trade_arena.register_merchant(merchant_id=merchant_id, ws=websocket, distance_km=distance_km)
     try:
         while True:
@@ -735,7 +742,7 @@ async def a2a_client_ws(websocket: WebSocket, client_id: str):
 
 
 @app.websocket("/ws/a2a/dialogue/merchant/{merchant_id}")
-async def a2a_dialogue_merchant_ws(websocket: WebSocket, merchant_id: str):
+async def a2a_dialogue_merchant_ws(websocket: WebSocket, merchant_id: str, token: str = ""):
     await websocket.accept()
     await dialogue_arena.register_merchant_ws(merchant_id=merchant_id, ws=websocket)
     try:

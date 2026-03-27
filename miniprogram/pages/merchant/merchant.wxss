@@ -1,113 +1,40 @@
 /* pages/merchant/merchant.wxss */
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 24rpx 0 32rpx;
-}
-.page-title { font-size: 48rpx; font-weight: 800; color: #1a1a2e; }
-.online-badge {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-  border-radius: 20rpx;
-  padding: 10rpx 20rpx;
-  font-size: 24rpx;
-  font-weight: 600;
-}
-.online-badge.online  { background: #e6f4ea; color: #2e7d32; }
-.online-badge.offline { background: #f5f5f5; color: #888; }
-
-/* 统计卡片 */
-.stats-card {
-  background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
-}
-.stats-title {
-  font-size: 28rpx;
-  font-weight: 600;
-  color: rgba(255,255,255,0.8);
-  margin-bottom: 28rpx;
-}
-.stats-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24rpx;
-  margin-bottom: 24rpx;
-}
-.stat-item {
-  background: rgba(255,255,255,0.07);
-  border-radius: 16rpx;
-  padding: 24rpx;
-  text-align: center;
-}
-.stat-value {
-  font-size: 52rpx;
-  font-weight: 800;
-  color: #e94560;
-  display: block;
-}
-.stat-label {
-  font-size: 22rpx;
-  color: rgba(255,255,255,0.5);
-  margin-top: 6rpx;
-  display: block;
-}
-.refresh-row {
-  text-align: center;
-  color: rgba(255,255,255,0.4);
-  font-size: 24rpx;
-  padding-top: 8rpx;
-}
-
-/* 画像面板 */
-.panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8rpx;
-}
-.panel-title { font-size: 30rpx; font-weight: 600; color: #1a1a2e; }
-.panel-arrow { font-size: 24rpx; color: #aaa; }
-
-.profile-summary { margin-top: 16rpx; }
-.summary-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16rpx 0;
-  border-bottom: 1rpx solid #f5f5f5;
-}
-.summary-label { font-size: 26rpx; color: #888; }
-.summary-value { font-size: 28rpx; font-weight: 600; color: #1a1a2e; }
-
-/* 编辑表单 */
-.edit-form { margin-top: 20rpx; }
-.form-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20rpx;
-}
-.form-label { font-size: 26rpx; color: #666; width: 180rpx; flex-shrink: 0; }
-.form-input {
-  flex: 1;
-  background: #f5f5f5;
-  border-radius: 12rpx;
-  padding: 18rpx 20rpx;
-  font-size: 28rpx;
-  color: #1a1a2e;
-  text-align: right;
-}
-
-/* 商家 ID 卡片 */
-.merchant-id-card { text-align: center; padding: 36rpx; }
-.mid-label { font-size: 24rpx; color: #aaa; display: block; margin-bottom: 12rpx; }
-.mid-value {
-  font-size: 36rpx;
-  font-weight: 700;
-  color: #1a1a2e;
-  display: block;
-  margin-bottom: 12rpx;
-  word-break: break-all;
-}
-.mid-hint { font-size: 22rpx; color: #aaa; display: block; }
+.merchant-hero{background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:24rpx;padding:32rpx;display:flex;justify-content:space-between;align-items:center;margin-bottom:24rpx}
+.hero-left{display:flex;align-items:center;gap:24rpx}
+.avatar{font-size:72rpx;background:rgba(255,255,255,.1);width:96rpx;height:96rpx;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.hero-info{}
+.hero-name{font-size:32rpx;font-weight:700;color:#fff;display:block;margin-bottom:8rpx}
+.hero-id{display:flex;align-items:center;gap:12rpx}
+.id-text{font-size:22rpx;color:rgba(255,255,255,.5)}
+.id-copy{font-size:20rpx;color:#e94560;border:1rpx solid rgba(233,69,96,.4);border-radius:6rpx;padding:2rpx 8rpx}
+.status-pill{display:flex;align-items:center;gap:8rpx;border-radius:20rpx;padding:10rpx 20rpx;font-size:22rpx}
+.status-pill.online{background:rgba(48,209,88,.15);color:#30d158}
+.status-pill.offline{background:rgba(255,59,92,.15);color:#ff3b5c}
+.status-dot{width:12rpx;height:12rpx;border-radius:50%;background:currentColor}
+.stats-row{display:flex;gap:16rpx;margin-bottom:28rpx}
+.stat-box{flex:1;background:#fff;border-radius:16rpx;padding:24rpx;text-align:center;box-shadow:0 2rpx 12rpx rgba(0,0,0,.06)}
+.stat-val{font-size:48rpx;font-weight:800;display:block;line-height:1.2}
+.stat-val.green{color:#30d158}
+.stat-val.blue{color:#0a84ff}
+.stat-val.red{color:#e94560}
+.stat-label{font-size:22rpx;color:#aaa;margin-top:8rpx;display:block}
+.section-title{font-size:28rpx;font-weight:700;color:#1a1a2e;margin-bottom:16rpx}
+.profile-row{margin-bottom:20rpx}
+.profile-label{font-size:24rpx;color:#555;display:block;margin-bottom:8rpx}
+.toggle-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:20rpx}
+.toggle-label{font-size:28rpx;color:#333;font-weight:500}
+.save-btn{background:linear-gradient(135deg,#e94560,#c73652);color:#fff;border:none;border-radius:16rpx;padding:24rpx 0;font-size:28rpx;font-weight:600;margin-top:8rpx}
+.save-btn::after{border:none}
+.config-row{display:flex;justify-content:space-between;align-items:center;padding:16rpx 0;border-bottom:1rpx solid #f5f5f5}
+.config-row:last-child{border-bottom:none}
+.config-label{font-size:26rpx;color:#666}
+.config-val-wrap{display:flex;align-items:center;gap:12rpx}
+.config-val{font-size:26rpx;color:#333}
+.config-val.green{color:#30d158}
+.config-val.red{color:#ff3b5c}
+.config-edit-btn{font-size:22rpx;color:#e94560;border:1rpx solid rgba(233,69,96,.4);border-radius:8rpx;padding:4rpx 12rpx}
+.refresh-btn-full{background:#f5f5f5;color:#666;border:none;border-radius:12rpx;padding:20rpx 0;font-size:26rpx;margin-top:16rpx}
+.refresh-btn-full::after{border:none}
+.tip-card{background:#fffbf0;border:1rpx solid #ffe58f}
+.tip-title{font-size:26rpx;font-weight:600;color:#8a6d00;display:block;margin-bottom:12rpx}
+.tip-text{font-size:22rpx;color:#a87c00;line-height:1.8;display:block}

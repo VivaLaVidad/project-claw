@@ -1,21 +1,25 @@
-// pages/orders/orders.js - 订单历史页
-const { createRequest, DialogueAPI } = require('../../api/request');
+// pages/orders/orders.js - 订单历史页 v2.0
+const { createRequest, SystemAPI } = require('../../api/request');
+const ProfileManager = require('../../utils/profile');
 
 Page({
   data: {
     orders: [],
+    localOrders: [],
     isLoading: false,
-    activeSessionId: '',
+    activeIntentId: '',
     activeDetail: null,
+    isOnline: true,
+    filterStatus: 'all',
+    filteredOrders: [],
   },
 
-  _request: null,
-  _dialogueAPI: null,
+  _sysAPI: null,
 
   onLoad() {
     const app = getApp();
-    this._request = createRequest(app.globalData.serverBase, app.globalData.token);
-    this._dialogueAPI = DialogueAPI(this._request);
+    const request = createRequest(app.globalData.serverBase, app.globalData.token);
+    this._sysAPI = SystemAPI(request);
     this._loadOrders();
   },
 
@@ -23,28 +27,52 @@ Page({
     this._loadOrders();
   },
 
+  onPullDownRefresh() {
+    this._loadOrders().then(() => wx.stopPullDownRefresh());
+  },
+
   async _loadOrders() {
     this.setData({ isLoading: true });
     try {
-      const res = await this._request({ method: 'GET', path: '/orders?limit=50' });
-      this.setData({ orders: res.items || [] });
+      const res = await this._sysAPI.orders(100);
+      const orders = res.items || [];
+      this.setData({ orders, isOnline: true });
+      this._applyFilter();
     } catch (e) {
-      console.error('[Orders] load failed', e);
-      wx.showToast({ title: '加载失败', icon: 'none' });
+      // 后端离线时显示本地缓存
+      const localOrders = ProfileManager.getLocalOrders();
+      this.setData({ orders: localOrders, isOnline: false });
+      this._applyFilter();
+      if (localOrders.length === 0) {
+        wx.showToast({ title: '服务暂时不可用', icon: 'none' });
+      }
     } finally {
       this.setData({ isLoading: false });
     }
   },
 
+  onFilterChange(e) {
+    this.setData({ filterStatus: e.currentTarget.dataset.status });
+    this._applyFilter();
+  },
+
+  _applyFilter() {
+    const { orders, filterStatus } = this.data;
+    const filtered = filterStatus === 'all'
+      ? orders
+      : orders.filter(o => o.status === filterStatus);
+    this.setData({ filteredOrders: filtered });
+  },
+
   async onTapOrder(e) {
     const { intentId } = e.currentTarget.dataset;
-    if (this.data.activeSessionId === intentId) {
-      this.setData({ activeSessionId: '', activeDetail: null });
+    if (this.data.activeIntentId === intentId) {
+      this.setData({ activeIntentId: '', activeDetail: null });
       return;
     }
-    this.setData({ activeSessionId: intentId, isLoading: true });
+    this.setData({ activeIntentId: intentId, isLoading: true });
     try {
-      const res = await this._request({ method: 'GET', path: `/orders/${intentId}` });
+      const res = await this._sysAPI.orderDetail(intentId);
       this.setData({ activeDetail: res });
     } catch (e) {
       wx.showToast({ title: '获取详情失败', icon: 'none' });
@@ -53,29 +81,15 @@ Page({
     }
   },
 
-  onRefresh() {
-    this._loadOrders();
+  onRefresh() { this._loadOrders(); },
+
+  onCopyId(e) {
+    const { id } = e.currentTarget.dataset;
+    wx.setClipboardData({ data: id, success: () => wx.showToast({ title: '已复制', icon: 'success' }) });
   },
 
-  formatTime(ts) {
-    if (!ts) return '-';
-    const d = new Date(ts * 1000);
-    return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-  },
-
-  statusText(status) {
-    const map = {
-      created: '已创建', broadcasted: '广播中', executing: '执行中',
-      executed: '已成交', failed: '失败',
-    };
-    return map[status] || status;
-  },
-
-  statusClass(status) {
-    const map = {
-      created: 'status-gray', broadcasted: 'status-blue',
-      executing: 'status-orange', executed: 'status-green', failed: 'status-red',
-    };
-    return map[status] || 'status-gray';
-  },
+  // wxs 无法用，直接在 js 里暴露格式化方法到 data
+  formatTime(ts) { return ProfileManager.formatTime(ts); },
+  statusText(s)  { return ProfileManager.statusText(s); },
+  statusClass(s) { return ProfileManager.statusClass(s); },
 });
