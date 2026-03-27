@@ -247,8 +247,8 @@
       <input id="priceInput" class="price-input" type="number" placeholder="预算¥" />
     </div>
     <div class="control-row">
-      <button class="chip-btn active" id="modeMock" onclick="setMode('mock')">演示模式</button>
-      <button class="chip-btn" id="modeLive" onclick="setMode('live')">真实模式</button>
+      <button class="chip-btn" id="modeMock" onclick="setMode('mock')">演示模式</button>
+      <button class="chip-btn active" id="modeLive" onclick="setMode('live')">真实模式</button>
       <button class="chip-btn" onclick="replayLast()">↻ 重播谈判</button>
     </div>
   </div>
@@ -301,7 +301,7 @@
 
 <script>
 const BASE='http://127.0.0.1:8765',TOKEN='';
-let currentDeal=null,sseSource=null,isRunning=false,demoMode=true,lastItem='',lastBudget=0,countdownTimer=null;
+let currentDeal=null,sseSource=null,isRunning=false,demoMode=false,lastItem='',lastBudget=0,countdownTimer=null;
 
 const MOCK_SCRIPT=[
   {delay:400, type:'info', text:'🚀 正在初始化 A2A 谈判引擎...'},

@@ -16,6 +16,8 @@ from pydantic import BaseModel, Field
 from cloud_server.match_orchestrator import MatchOrchestrator
 from cloud_server.a2a_orchestrator import TradeArena, parse_intent_message, parse_offer_message
 from cloud_server.dialogue_arena import DialogueArena
+from audit_broadcaster import AuditBroadcaster
+from audit_broadcaster import AuditBroadcaster
 from shared.claw_protocol import (
     A2A_ClientTurnRequest,
     A2A_DialogueTurn,
@@ -311,6 +313,76 @@ class ConnectionManager:
         }
 
 
+# ─── 审计事件广播器（驱动上帝视角大屏）───────────────────────────────────────
+class AuditBroadcaster:
+    """将所有 A2A 事件实时推送给所有监控连接（上帝视角大屏）。"""
+
+    def __init__(self):
+        self._clients: list[asyncio.Queue] = []
+        self._lock = asyncio.Lock()
+        # 累计统计
+        self.total_negotiations: int = 0
+        self.total_savings: float = 0.0
+        self.trade_log: list[dict] = []
+
+    async def subscribe(self) -> asyncio.Queue:
+        q: asyncio.Queue = asyncio.Queue(maxsize=200)
+        async with self._lock:
+            self._clients.append(q)
+        return q
+
+    async def unsubscribe(self, q: asyncio.Queue) -> None:
+        async with self._lock:
+            try:
+                self._clients.remove(q)
+            except ValueError:
+                pass
+
+    async def emit(self, event: dict) -> None:
+        """向所有监控客户端广播事件。"""
+        event.setdefault("ts", time.time())
+        async with self._lock:
+            dead = []
+            for q in self._clients:
+                try:
+                    q.put_nowait(event)
+                except asyncio.QueueFull:
+                    dead.append(q)
+            for q in dead:
+                try:
+                    self._clients.remove(q)
+                except ValueError:
+                    pass
+
+    def record_trade(self, merchant_id: str, item: str, normal_price: float,
+                     final_price: float, tags: list[str]) -> None:
+        savings = max(0.0, normal_price - final_price)
+        self.total_negotiations += 1
+        self.total_savings += savings
+        self.trade_log.append({
+            "ts": time.time(),
+            "merchant_id": merchant_id,
+            "item": item,
+            "normal_price": normal_price,
+            "final_price": final_price,
+            "savings": round(savings, 2),
+            "tags": tags,
+        })
+        if len(self.trade_log) > 500:
+            self.trade_log = self.trade_log[-500:]
+
+    def snapshot(self) -> dict:
+        return {
+            "online_merchants": 0,  # 由调用方填充
+            "total_negotiations": self.total_negotiations,
+            "total_savings": round(self.total_savings, 2),
+            "recent_trades": self.trade_log[-20:],
+            "audit_subscribers": len(self._clients),
+        }
+
+
+audit = AuditBroadcaster()
+audit = AuditBroadcaster()
 manager = ConnectionManager()
 match_orchestrator = MatchOrchestrator()
 trade_arena = TradeArena(timeout_seconds=3.0, top_k=3)
@@ -319,6 +391,7 @@ dialogue_arena = DialogueArena()
 
 @app.on_event("startup")
 async def startup():
+    audit.init_lock()
     asyncio.ensure_future(manager.heartbeat_loop())
     logger.info("=" * 60)
     logger.info("Project Claw Signaling Server v13.0 启动")
@@ -513,6 +586,15 @@ async def post_intent(intent: ClientIntent, _auth: None = Depends(verify_interna
     if cached is not None:
         return SignalingResponse(**cached)
     result = await manager.broadcast_intent(intent)
+    # 审计广播
+    import asyncio as _aio
+    _aio.ensure_future(audit.emit({"type":"intent","role":"info","text":f"[{result.intent_id}] C端广播: {intent.demand_text} max=¥{intent.max_price} merchants={result.total_merchants}"}))
+    if result.offers:
+        for _o in result.offers[:3]:
+            _aio.ensure_future(audit.emit({"type":"agent","role":"seller","text":f"[B端Agent:{_o.merchant_id}] 报价 ¥{_o.final_price} score={_o.match_score:.1f}"}))
+        best = result.offers[0]
+        _aio.ensure_future(audit.emit({"type":"deal","role":"deal","text":f"[成交] {best.merchant_id} ¥{best.final_price} 节省¥{round(intent.max_price-best.final_price,2)}"}))
+        audit.record_trade(best.merchant_id, intent.demand_text, intent.max_price, best.final_price, best.offer_tags)
     manager.idempotency.set(key, result.model_dump())
     return result
 
@@ -703,3 +785,35 @@ async def a2a_dialogue_client_ws(websocket: WebSocket, client_id: str):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("a2a_signaling_server:app", host=settings.SIGNALING_HOST, port=settings.SIGNALING_PORT, log_level="info", ws_ping_interval=20, ws_ping_timeout=10)
+
+
+@app.websocket("/ws/audit_stream")
+async def audit_stream_ws(websocket: WebSocket):
+    """上帝视角监控大屏实时审计流"""
+    await websocket.accept()
+    q = await audit.subscribe()
+    # 先发送当前快照
+    snap = audit.snapshot(online_merchants=len(manager._merchants))
+    await websocket.send_text(json.dumps({"type": "snapshot", **snap}, ensure_ascii=False))
+    try:
+        while True:
+            try:
+                event = await asyncio.wait_for(q.get(), timeout=20.0)
+                await websocket.send_text(json.dumps(event, ensure_ascii=False))
+            except asyncio.TimeoutError:
+                # 心跳
+                await websocket.send_text(json.dumps({"type": "ping", "ts": time.time()}))
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.warning(f"[audit_stream] error: {e}")
+    finally:
+        await audit.unsubscribe(q)
+
+
+@app.get("/audit/snapshot")
+async def audit_snapshot_http():
+    """HTTP 拉取当前审计快照（Streamlit 初始化用）"""
+    snap = audit.snapshot(online_merchants=len(manager._merchants))
+    stats = manager.stats()
+    return {**snap, **stats}
