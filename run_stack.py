@@ -22,7 +22,7 @@ SERVICES = {
         "--host",
         settings.SIGNALING_HOST,
         "--port",
-        str(settings.SIGNALING_PORT),
+        str(int(os.environ.get("PORT", settings.SIGNALING_PORT))),
     ],
     "siri": [
         str(PYTHON),
