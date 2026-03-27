@@ -1,0 +1,79 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Intent Total",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "claw_intent_total", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Offer Total",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "targets": [{ "expr": "claw_offer_total", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Execute Success",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "targets": [{ "expr": "claw_execute_success", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Execute Fail",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+      "targets": [{ "expr": "claw_execute_fail", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Offer Adjust Ratio",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        {
+          "expr": "claw_offer_adjusted / clamp_min(claw_offer_total, 1)",
+          "legendFormat": "adjust_ratio",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Strategy Offer Count",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        {
+          "expr": "claw_strategy_offer_total",
+          "legendFormat": "{{strategy}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["project-claw", "a2a", "industrial"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Project Claw Industrial Overview",
+  "uid": "project-claw-industrial",
+  "version": 1
+}

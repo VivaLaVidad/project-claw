@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Project Claw · 龙虾买手</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #0d0d0f;
+      --surface: rgba(255,255,255,0.055);
+      --surface2:rgba(255,255,255,0.09);
+      --border:  rgba(255,255,255,0.10);
+      --accent:  #ff3b5c;
+      --accent2: #ff6b35;
+      --green:   #30d158;
+      --text:    #f5f5f7;
+      --text2:   rgba(245,245,247,0.55);
+      --r:       22px;
+      --rsm:     14px;
+      --font:    -apple-system,'SF Pro Display','PingFang SC',sans-serif;
+    }
+    html,body{
+      height:100%; background:var(--bg); color:var(--text);
+      font-family:var(--font); -webkit-font-smoothing:antialiased; overflow-x:hidden;
+    }
+    body{ display:flex; flex-direction:column; align-items:center; min-height:100dvh; }
+
+    /* aurora */
+    .aurora{ position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden; }
+    .aurora::before,.aurora::after{
+      content:''; position:absolute; border-radius:50%; filter:blur(90px); opacity:.18;
+      animation:drift 14s ease-in-out infinite alternate;
+    }
+    .aurora::before{
+      width:520px; height:520px;
+      background:radial-gradient(circle,#ff3b5c,transparent 70%);
+      top:-180px; left:-120px;
+    }
+    .aurora::after{
+      width:420px; height:420px;
+      background:radial-gradient(circle,#0a84ff,transparent 70%);
+      bottom:-160px; right:-100px; animation-delay:-7s;
+    }
+    @keyframes drift{ 100%{ transform:translate(40px,30px) scale(1.12); } }
+
+    /* layout */
+    .app{
+      position:relative; z-index:1;
+      width:100%; max-width:430px; min-height:100dvh;
+      display:flex; flex-direction:column; padding:0 0 160px;
+    }
+
+    /* header */
+    .header{ padding:52px 24px 20px; display:flex; align-items:center; gap:14px; }
+    .logo{
+      width:44px; height:44px;
+      background:linear-gradient(135deg,var(--accent),var(--accent2));
+      border-radius:12px; display:flex; align-items:center; justify-content:center;
+      font-size:22px; flex-shrink:0; box-shadow:0 0 20px rgba(255,59,92,.4);
+    }
+    .header-text h1{ font-size:22px; font-weight:700; letter-spacing:-.4px; }
+    .header-text p { font-size:13px; color:var(--text2); margin-top:2px; }
+
+    /* glass */
+    .glass{
+      background:var(--surface); border:1px solid var(--border);
+      backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); border-radius:var(--r);
+    }
+
+    /* input */
+    .input-section{ margin:0 16px; padding:20px; }
+    .input-row{ display:flex; gap:10px; align-items:center; }
+    .item-input{
+      flex:1; background:var(--surface2); border:1px solid var(--border);
+      border-radius:var(--rsm); padding:14px 16px; color:var(--text);
+      font-size:16px; font-family:var(--font); outline:none; transition:border-color .2s;
+    }
+    .item-input::placeholder{ color:var(--text2); }
+    .item-input:focus{ border-color:rgba(255,59,92,.6); }
+    .price-input{
+      width:90px; background:var(--surface2); border:1px solid var(--border);
+      border-radius:var(--rsm); padding:14px 12px; color:var(--text);
+      font-size:16px; font-family:var(--font); outline:none;
+      text-align:center; transition:border-color .2s;
+    }
+    .price-input::placeholder{ color:var(--text2); font-size:13px; }
+    .price-input:focus{ border-color:rgba(255,59,92,.6); }
+
+    /* mode chips */
+    .control-row{ margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; }
+    .chip-btn{
+      border:1px solid var(--border); background:var(--surface2); color:var(--text2);
+      border-radius:999px; padding:7px 14px; font-size:12px; cursor:pointer;
+      font-family:var(--font); transition:all .2s;
+    }
+    .chip-btn.active{
+      color:#fff; border-color:rgba(255,59,92,.55); background:rgba(255,59,92,.2);
+    }
+
+    /* summon button */
+    .btn-summon-wrap{ margin:16px 16px 0; position:relative; }
+    .btn-summon{
+      width:100%; padding:18px; border:none; border-radius:var(--r);
+      background:linear-gradient(135deg,var(--accent) 0%,var(--accent2) 100%);
+      color:#fff; font-size:17px; font-weight:600; font-family:var(--font);
+      cursor:pointer; position:relative; z-index:2;
+      transition:transform .15s,box-shadow .15s;
+      box-shadow:0 4px 24px rgba(255,59,92,.35);
+      display:flex; align-items:center; justify-content:center; gap:8px;
+    }
+    .btn-summon:active{ transform:scale(.97); }
+    .btn-summon.scanning{ pointer-events:none; }
+    .btn-icon{ font-size:20px; transition:transform .3s; }
+    .btn-summon.scanning .btn-icon{ animation:spin 1.2s linear infinite; }
+    @keyframes spin{ to{ transform:rotate(360deg); } }
+
+    /* radar */
+    .radar-rings{ position:absolute; inset:0; border-radius:var(--r); pointer-events:none; overflow:visible; }
+    .ring{
+      position:absolute; top:50%; left:50%;
+      transform:translate(-50%,-50%) scale(0);
+      border-radius:50%; border:1.5px solid rgba(255,59,92,.6);
+      opacity:0; width:40px; height:40px;
+    }
+    .ring.active{ animation:radar 2.4s ease-out infinite; }
+    .ring:nth-child(2).active{ animation-delay:.6s; }
+    .ring:nth-child(3).active{ animation-delay:1.2s; }
+    .ring:nth-child(4).active{ animation-delay:1.8s; }
+    @keyframes radar{
+      0%  { transform:translate(-50%,-50%) scale(.3); opacity:.8; }
+      100%{ transform:translate(-50%,-50%) scale(14); opacity:0; }
+    }
+
+    /* log */
+    .log-section{
+      flex:1; margin:20px 16px 0; padding:20px;
+      min-height:240px; max-height:360px;
+      overflow-y:auto; display:flex; flex-direction:column; gap:10px;
+      scroll-behavior:smooth;
+    }
+    .log-section::-webkit-scrollbar{ width:4px; }
+    .log-section::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.12); border-radius:4px; }
+    .log-placeholder{
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      height:100%; gap:12px; color:var(--text2); font-size:15px;
+    }
+    .log-placeholder .icon{ font-size:40px; opacity:.4; }
+    .log-item{
+      display:flex; align-items:flex-start; gap:10px;
+      animation:slidein .25s ease both; font-size:14px; line-height:1.55;
+    }
+    @keyframes slidein{ from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+    .log-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; margin-top:5px; }
+    .log-item.info  .log-dot{ background:#636366; }
+    .log-item.agent .log-dot{ background:#0a84ff; box-shadow:0 0 6px #0a84ff; }
+    .log-item.deal  .log-dot{ background:var(--green); box-shadow:0 0 8px var(--green); }
+    .log-item.warn  .log-dot{ background:#ff9f0a; }
+    .log-text{ flex:1; }
+    .log-item.agent .log-text{ color:#5ac8fa; }
+    .log-item.deal  .log-text{ color:var(--green); font-weight:600; }
+    .log-item.warn  .log-text{ color:#ff9f0a; }
+    .typing::after{ content:'▋'; display:inline-block; animation:blink .65s step-end infinite; margin-left:1px; font-size:12px; }
+    @keyframes blink{ 0%,100%{opacity:1} 50%{opacity:0} }
+
+    /* deal card */
+    .deal-card-wrap{
+      position:fixed; bottom:0; left:50%;
+      transform:translateX(-50%) translateY(105%);
+      width:100%; max-width:430px; z-index:100;
+      transition:transform .45s cubic-bezier(.22,1,.36,1);
+      padding:0 16px 36px;
+    }
+    .deal-card-wrap.show{ transform:translateX(-50%) translateY(0); }
+    .deal-card{ padding:28px 24px 20px; }
+    .deal-label{ font-size:13px; color:var(--text2); letter-spacing:.8px; margin-bottom:6px; }
+    .deal-merchant{ font-size:20px; font-weight:700; margin-bottom:4px; }
+    .deal-desc{ font-size:14px; color:var(--text2); margin-bottom:20px; line-height:1.5; }
+    .deal-price-row{ display:flex; align-items:baseline; gap:8px; margin-bottom:16px; }
+    .deal-price{
+      font-size:52px; font-weight:800; letter-spacing:-2px; line-height:1;
+      background:linear-gradient(135deg,var(--green),#34c759);
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+    }
+    .deal-currency{
+      font-size:24px; font-weight:700;
+      background:linear-gradient(135deg,var(--green),#34c759);
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+    }
+    .deal-original{ font-size:14px; color:var(--text2); text-decoration:line-through; }
+    .deal-tags{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+    .deal-tag{
+      background:rgba(48,209,88,.12); border:1px solid rgba(48,209,88,.25);
+      color:var(--green); border-radius:20px; padding:4px 12px;
+      font-size:12px; font-weight:500;
+    }
+    /* countdown ring */
+    .countdown-wrap{ display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+    .countdown-ring-svg{ transform:rotate(-90deg); flex-shrink:0; }
+    .countdown-ring-bg{ fill:none; stroke:rgba(255,255,255,.08); stroke-width:3; }
+    .countdown-ring-fill{ fill:none; stroke:var(--green); stroke-width:3; stroke-linecap:round;
+      stroke-dasharray:100; transition:stroke-dashoffset .95s linear; }
+    .countdown-text{ font-size:13px; color:var(--text2); }
+    .countdown-text b{ color:var(--green); }
+    .btn-confirm{
+      width:100%; padding:18px; border:none; border-radius:var(--r);
+      background:linear-gradient(135deg,var(--green),#34c759);
+      color:#000; font-size:17px; font-weight:700; font-family:var(--font);
+      cursor:pointer; box-shadow:0 4px 24px rgba(48,209,88,.35);
+      transition:transform .15s,opacity .15s;
+      display:flex; align-items:center; justify-content:center; gap:8px;
+    }
+    .btn-confirm:active{ transform:scale(.97); }
+    .btn-confirm.loading{ opacity:.7; pointer-events:none; }
+    .btn-dismiss{
+      width:100%; margin-top:10px; padding:14px;
+      border:none; border-radius:var(--rsm); background:transparent;
+      color:var(--text2); font-size:15px; font-family:var(--font); cursor:pointer;
+    }
+
+    /* toast */
+    .toast{
+      position:fixed; top:24px; left:50%;
+      transform:translateX(-50%) translateY(-80px);
+      background:rgba(28,28,30,.95); border:1px solid var(--border);
+      backdrop-filter:blur(20px); border-radius:24px;
+      padding:12px 22px; font-size:14px; color:var(--text);
+      z-index:999; transition:transform .35s cubic-bezier(.22,1,.36,1); white-space:nowrap;
+    }
+    .toast.show{ transform:translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+<div class="aurora"></div>
+<div class="app">
+  <div class="header">
+    <div class="logo">🦞</div>
+    <div class="header-text">
+      <h1>Project Claw</h1>
+      <p>AI 驱动的 A2A 智能买手</p>
+    </div>
+  </div>
+
+  <div class="input-section glass">
+    <div class="input-row">
+      <input id="itemInput" class="item-input" type="text" placeholder="想吃什么？例如：牛肉面" maxlength="32" />
+      <input id="priceInput" class="price-input" type="number" placeholder="预算¥" />
+    </div>
+    <div class="control-row">
+      <button class="chip-btn active" id="modeMock" onclick="setMode('mock')">演示模式</button>
+      <button class="chip-btn" id="modeLive" onclick="setMode('live')">真实模式</button>
+      <button class="chip-btn" onclick="replayLast()">↻ 重播谈判</button>
+    </div>
+  </div>
+
+  <div class="btn-summon-wrap">
+    <div class="radar-rings" id="radarRings">
+      <div class="ring"></div><div class="ring"></div>
+      <div class="ring"></div><div class="ring"></div>
+    </div>
+    <button class="btn-summon" id="btnSummon" onclick="onSummon()">
+      <span class="btn-icon" id="btnIcon">✦</span>
+      <span id="btnText">召唤龙虾买手</span>
+    </button>
+  </div>
+
+  <div class="log-section glass" id="logSection">
+    <div class="log-placeholder" id="logPlaceholder">
+      <span class="icon">📡</span>
+      <span>点击按钮，启动 A2A 智能谈判</span>
+    </div>
+  </div>
+</div>
+
+<div class="deal-card-wrap" id="dealCardWrap">
+  <div class="deal-card glass">
+    <div class="deal-label">🎉 谈判成功 · A2A 达成交易</div>
+    <div class="deal-merchant" id="dealMerchant"></div>
+    <div class="deal-desc" id="dealDesc"></div>
+    <div class="deal-price-row">
+      <span class="deal-currency">¥</span>
+      <span class="deal-price" id="dealPrice"></span>
+      <span class="deal-original" id="dealOriginal"></span>
+    </div>
+    <div class="deal-tags" id="dealTags"></div>
+    <div class="countdown-wrap" id="countdownWrap" style="display:none">
+      <svg class="countdown-ring-svg" width="28" height="28" viewBox="0 0 36 36">
+        <circle class="countdown-ring-bg" cx="18" cy="18" r="15.9"/>
+        <circle class="countdown-ring-fill" id="countdownArc" cx="18" cy="18" r="15.9" style="stroke-dashoffset:0"/>
+      </svg>
+      <span class="countdown-text"><b id="countdownNum">8</b> 秒后自动确认</span>
+    </div>
+    <button class="btn-confirm" id="btnConfirm" onclick="onConfirm()">
+      <span>✅</span><span>确认并通知商家</span>
+    </button>
+    <button class="btn-dismiss" onclick="onDismiss()">暂不购买</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const BASE='http://127.0.0.1:8765',TOKEN='';
+let currentDeal=null,sseSource=null,isRunning=false,demoMode=true,lastItem='',lastBudget=0,countdownTimer=null;
+
+const MOCK_SCRIPT=[
+  {delay:400, type:'info', text:'🚀 正在初始化 A2A 谈判引擎...'},
+  {delay:900, type:'info', text:'📡 广播意图至附近 3 家商家...'},
+  {delay:1600,type:'agent',text:'🤖 [王记快餐 Agent] 收到询价，正在计算报价...'},
+  {delay:2400,type:'agent',text:'🤖 [王记快餐 Agent] 报价 ¥18.0 元，可在 15 分钟内送达'},
+  {delay:3100,type:'agent',text:'🤖 [C端 Agent] 目标价 ¥15，开始砍价...'},
+  {delay:3900,type:'agent',text:'🤖 [王记快餐 Agent] 最低 ¥16，附赠小菜一份'},
+  {delay:4700,type:'agent',text:'🤖 [C端 Agent] 分析利润空间，继续博弈...'},
+  {delay:5500,type:'agent',text:'🤖 [王记快餐 Agent] 好兄弟给你 ¥15.5，这是底价了！'},
+  {delay:6300,type:'agent',text:'🤖 [C端 Agent] 满意度评估: 价格 96% · 时效 88%'},
+  {delay:7000,type:'deal', text:'✅ 达成交易！成交价 ¥15.5，预计 15 分钟送达',
+   deal:{merchant:'王记快餐',price:15.5,original:18.0,desc:'牛肉面×1 + 小菜×1，15分钟内送达',tags:['AI砍价','已优惠¥2.5','高履约']}},
+];
+
+function hdrs(){const h={'Content-Type':'application/json'};if(TOKEN)h['x-internal-token']=TOKEN;return h;}
+
+function showToast(msg,dur=2200){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),dur);
+}
+
+function addLog(type,text){
+  const ph=document.getElementById('logPlaceholder');if(ph)ph.remove();
+  const wrap=document.getElementById('logSection');
+  const item=document.createElement('div');
+  item.className='log-item '+type;
+  item.innerHTML='<div class="log-dot"></div><div class="log-text typing"></div>';
+  wrap.appendChild(item);wrap.scrollTop=wrap.scrollHeight;
+  const el=item.querySelector('.log-text');let i=0;
+  const tick=()=>{if(i<text.length){el.textContent+=text[i++];wrap.scrollTop=wrap.scrollHeight;setTimeout(tick,18+Math.random()*14);}else el.classList.remove('typing');};
+  tick();
+}
+
+function setScanState(active){
+  const btn=document.getElementById('btnSummon');
+  document.querySelectorAll('.ring').forEach(r=>r.classList.toggle('active',active));
+  if(active){btn.classList.add('scanning');document.getElementById('btnIcon').textContent='⟳';document.getElementById('btnText').textContent='正在谈判中...';}
+  else{btn.classList.remove('scanning');document.getElementById('btnIcon').textContent='✦';document.getElementById('btnText').textContent='重新发起';}
+}
+
+function startCountdown(){
+  const wrap=document.getElementById('countdownWrap'),num=document.getElementById('countdownNum'),arc=document.getElementById('countdownArc');
+  wrap.style.display='flex';let sec=8;
+  const circ=2*Math.PI*15.9;arc.style.strokeDasharray=circ;arc.style.strokeDashoffset=0;num.textContent=sec;
+  countdownTimer=setInterval(()=>{
+    sec--;num.textContent=sec;arc.style.strokeDashoffset=circ*(1-sec/8);
+    if(sec<=0){clearInterval(countdownTimer);onConfirm();}
+  },1000);
+}
+
+function stopCountdown(){clearInterval(countdownTimer);document.getElementById('countdownWrap').style.display='none';}
+
+function showDealCard(deal){
+  currentDeal=deal;
+  document.getElementById('dealMerchant').textContent=deal.merchant;
+  document.getElementById('dealDesc').textContent=deal.desc;
+  document.getElementById('dealPrice').textContent=deal.price;
+  document.getElementById('dealOriginal').textContent=deal.original?'¥'+deal.original:'';
+  const tagsEl=document.getElementById('dealTags');tagsEl.innerHTML='';
+  (deal.tags||[]).forEach(t=>{const s=document.createElement('span');s.className='deal-tag';s.textContent=t;tagsEl.appendChild(s);});
+  const btn=document.getElementById('btnConfirm');btn.innerHTML='<span>✅</span><span>确认并通知商家</span>';btn.disabled=false;btn.classList.remove('loading');
+  setTimeout(()=>{document.getElementById('dealCardWrap').classList.add('show');startCountdown();},120);
+}
+
+function clearLogs(){document.getElementById('logSection').innerHTML='';}
+
+function setMode(mode){
+  demoMode=(mode==='mock');
+  document.getElementById('modeMock').classList.toggle('active',demoMode);
+  document.getElementById('modeLive').classList.toggle('active',!demoMode);
+  showToast(demoMode?'已切换：演示模式 🎭':'已切换：真实模式 🔴');
+}
+
+function replayLast(){
+  if(!lastItem){showToast('请先发起一次谈判');return;}
+  document.getElementById('itemInput').value=lastItem;
+  document.getElementById('priceInput').value=lastBudget;
+  document.getElementById('dealCardWrap').classList.remove('show');
+  stopCountdown();clearLogs();setScanState(true);isRunning=true;
+  runMock(lastItem,lastBudget);
+}
+
+function runMock(item,budget){
+  let t=0;
+  MOCK_SCRIPT.forEach(({delay,type,text,deal})=>{
+    t+=delay;
+    setTimeout(()=>{addLog(type,text);if(deal){setScanState(false);isRunning=false;setTimeout(()=>showDealCard({...deal}),500);}},t);
+  });
+}
+
+function runSSE(item,budget){
+  const cid='mock_'+Date.now();
+  fetch(BASE+'/a2a/intent',{method:'POST',headers:hdrs(),body:JSON.stringify({client_id:cid,item_name:item,expected_price:budget,max_distance_km:8,timestamp:Date.now()/1000})}).catch(()=>{});
+  sseSource=new EventSource(BASE+'/a2a/stream/'+cid);
+  sseSource.onmessage=(e)=>{
+    try{
+      const msg=JSON.parse(e.data);
+      const type=['agent_result','agent_start'].includes(msg.type)?'agent':msg.type==='agent_complete'?'deal':msg.type==='agent_error'?'warn':'info';
+      addLog(type,msg.message||msg.text||JSON.stringify(msg));
+      if(msg.type==='agent_complete'&&msg.result){
+        const r=msg.result;setScanState(false);isRunning=false;sseSource.close();
+        showDealCard({merchant:r.merchant_id||'商家',price:r.offered_price||r.final_price||0,original:r.normal_price||null,desc:r.reason||item,tags:r.offer_tags||['AI砍价成功']});
+      }
+    }catch(_){}
+  };
+  sseSource.onerror=()=>{sseSource.close();addLog('warn','⚠️ SSE断开，切换演示...');runMock(item,budget);};
+}
+
+async function onSummon(){
+  if(isRunning)return;
+  const item=document.getElementById('itemInput').value.trim();
+  const budget=parseFloat(document.getElementById('priceInput').value)||0;
+  if(!item){showToast('请输入想要的商品 😊');return;}
+  if(!budget){showToast('请输入预算金额');return;}
+  lastItem=item;lastBudget=budget;isRunning=true;
+  document.getElementById('dealCardWrap').classList.remove('show');
+  stopCountdown();clearLogs();setScanState(true);
+  if(demoMode){addLog('info','🎭 演示模式启动...');runMock(item,budget);return;}
+  try{
+    await fetch(BASE+'/health',{signal:AbortSignal.timeout(2000)});
+    runSSE(item,budget);
+  }catch(_){addLog('warn','⚠️ 服务离线，切换演示模式...');runMock(item,budget);}
+}
+
+async function onConfirm(){
+  stopCountdown();if(!currentDeal)return;
+  const btn=document.getElementById('btnConfirm');
+  btn.classList.add('loading');btn.innerHTML='<span>⏳</span><span>通知商家中...</span>';
+  try{
+    const res=await fetch(BASE+'/api/v1/trade/execute',{method:'POST',headers:hdrs(),body:JSON.stringify({merchant_id:currentDeal.merchant,final_price:currentDeal.price,item:document.getElementById('itemInput').value.trim(),client_id:'mock_client_h5'})});
+    showToast(res.ok?'🎉 商家已收到通知！':'✅ 演示：已模拟通知商家');
+  }catch(_){showToast('✅ 演示：已模拟通知商家');}
+  btn.classList.remove('loading');btn.innerHTML='<span>✅</span><span>已通知商家</span>';btn.disabled=true;
+}
+
+function onDismiss(){
+  stopCountdown();
+  document.getElementById('dealCardWrap').classList.remove('show');
+  currentDeal=null;
+}
+</script>
+</body>
+</html>

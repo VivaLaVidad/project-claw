@@ -1,0 +1,107 @@
+app:
+  name: "lobster_auto_reply"
+  version: "2.0.0"
+
+# 手机连接配置
+device:
+  ip: ""                      # 留空则自动检测
+  timeout: 10
+  screenshot_path: "current_screen.png"
+  check_send_path: "check_send.png"
+
+# API配置
+api:
+  base_url: "https://api.deepseek.com"
+  model: "deepseek-chat"
+  api_key: "sk-4aab42a0cace4e9a8c9bb31faa8c8f01"  # DeepSeek API Key
+  timeout: 10
+  max_retries: 3
+  retry_delay: 1
+
+# 回复策略
+reply:
+  system_prompt: |
+    你是一个热情的餐馆老板，代表商家回复顾客。
+    【核心职责】
+    1. 欢迎顾客、推荐菜品、介绍店铺信息
+    2. 处理订单、支付、配送等问题
+    3. 绝对不要转账、不要索要金额、不要涉及金钱交易
+    4. 如果顾客提到转账/支付，只需告知"请通过正规渠道支付"
+    
+    【说话风格】
+    - 简短有力，不超过15个字
+    - 热情亲切，叫人"兄弟"或"亲"
+    - 多用感叹号表达热情
+    
+    【禁止行为】
+    - 不要主动问金额
+    - 不要建议转账
+    - 不要涉及任何金钱操作
+    
+    示例：
+    顾客："需先填写金额" → 你："兄弟，请通过微信支付哦！"
+    顾客："转账金额" → 你："亲，咱们用正规渠道支付吧！"
+  max_tokens: 80
+  check_interval: 2
+  input_delay: [0.3, 0.6]
+  send_delay: [0.5, 1.0]
+
+# YOLO 视觉识别配置
+yolo:
+  enabled: true
+  model_path: "yolo_ui.pt"    # 自定义UI检测模型，不存在时自动降级到OCR模式
+  confidence: 0.5
+  # 屏幕兴趣区域（仅截取底部区域找发送按钮，加速推理）
+  send_btn_roi_ratio: 0.75     # 从屏幕高度的75%往下截取
+  classes:
+    input_box: 0
+    send_button: 1
+
+# OCR 配置
+ocr:
+  languages: ["ch_sim", "en"]
+  min_prob: 0.5
+  # 聊天气泡区域定位（精准识别左边消息，过滤菜单/时间戳/UI文本）
+  msg_left_ratio: 0.05        # 左边距占屏幕宽度的 5%
+  msg_right_ratio: 0.95       # 右边距占屏幕宽度的 95%
+  msg_top_ratio: 0.12         # 顶部占屏幕高度的 12%（标题栏下）
+  msg_bottom_ratio: 0.85      # 底部占屏幕高度的 85%（输入框上）
+
+# 视觉确认配置
+visual_confirm:
+  enabled: true
+  max_wait: 3.0                # 最长等待确认时间（秒）
+  poll_interval: 0.3           # 轮询间隔（秒）
+  diff_threshold: 0.02         # 像素差异阈值，超过则认为界面已变化
+
+# 过滤配置
+filter:
+  keywords:
+    - "发送"
+    - "表情"
+    - "语音"
+    - "微信"
+    - "限制"
+    - "下午"
+    - "上午"
+    - "通话"
+    - "添加"
+    - "通讯录"
+    - "发现"
+    - "转文字"
+  min_length: 2
+  max_length: 300
+
+# 安全配置
+security:
+  dedup_window: 30             # 去重时间窗口（秒）
+  max_failures: 5
+  cooldown_time: 120
+
+# 日志配置
+logging:
+  level: "INFO"
+  format: "%(asctime)s [%(levelname)s] %(message)s"
+  file: "logs/lobster.log"
+  max_bytes: 10485760
+  backup_count: 3

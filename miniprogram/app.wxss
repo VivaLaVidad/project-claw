@@ -1,0 +1,181 @@
+/* ===== Project Claw 全局样式 ===== */
+page {
+  font-family: -apple-system, 'PingFang SC', 'Helvetica Neue', sans-serif;
+  background-color: #f0f2f5;
+  color: #1a1a2e;
+  font-size: 28rpx;
+  line-height: 1.6;
+}
+
+/* 通用容器 */
+.container {
+  padding: 24rpx;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+/* 卡片 */
+.card {
+  background: #ffffff;
+  border-radius: 24rpx;
+  padding: 32rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 4rpx 24rpx rgba(0,0,0,0.06);
+}
+
+/* 标题 */
+.page-title {
+  font-size: 48rpx;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin-bottom: 8rpx;
+}
+
+.page-subtitle {
+  font-size: 26rpx;
+  color: #888888;
+  margin-bottom: 40rpx;
+}
+
+/* 主按钮 */
+.btn-primary {
+  background: linear-gradient(135deg, #e94560 0%, #c73652 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 16rpx;
+  padding: 28rpx 48rpx;
+  font-size: 32rpx;
+  font-weight: 600;
+  text-align: center;
+  width: 100%;
+  box-sizing: border-box;
+  letter-spacing: 2rpx;
+}
+
+.btn-primary::after {
+  border: none;
+}
+
+/* 次要按钮 */
+.btn-secondary {
+  background: transparent;
+  color: #e94560;
+  border: 2rpx solid #e94560;
+  border-radius: 16rpx;
+  padding: 24rpx 40rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.btn-secondary::after {
+  border: none;
+}
+
+/* 标签 */
+.tag {
+  display: inline-block;
+  background: #f0e6ea;
+  color: #e94560;
+  border-radius: 8rpx;
+  padding: 6rpx 16rpx;
+  font-size: 22rpx;
+  margin-right: 8rpx;
+  margin-bottom: 8rpx;
+}
+
+.tag-blue {
+  background: #e6eef8;
+  color: #1a6bc4;
+}
+
+.tag-green {
+  background: #e6f4ea;
+  color: #2e7d32;
+}
+
+/* 价格 */
+.price {
+  color: #e94560;
+  font-size: 40rpx;
+  font-weight: 700;
+}
+
+.price-unit {
+  font-size: 24rpx;
+  font-weight: 400;
+}
+
+/* 分割线 */
+.divider {
+  height: 1rpx;
+  background: #f0f0f0;
+  margin: 24rpx 0;
+}
+
+/* 空状态 */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 120rpx 40rpx;
+  color: #aaaaaa;
+}
+
+.empty-icon {
+  font-size: 100rpx;
+  margin-bottom: 24rpx;
+}
+
+.empty-text {
+  font-size: 28rpx;
+  color: #aaaaaa;
+}
+
+/* 加载 */
+.loading-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40rpx;
+}
+
+/* agent 对话气泡 */
+.bubble-client {
+  background: linear-gradient(135deg, #e94560, #c73652);
+  color: #fff;
+  border-radius: 24rpx 24rpx 8rpx 24rpx;
+  padding: 20rpx 28rpx;
+  max-width: 70%;
+  margin-left: auto;
+  font-size: 28rpx;
+  line-height: 1.6;
+  box-shadow: 0 4rpx 16rpx rgba(233,69,96,0.25);
+}
+
+.bubble-merchant {
+  background: #ffffff;
+  color: #1a1a2e;
+  border-radius: 24rpx 24rpx 24rpx 8rpx;
+  padding: 20rpx 28rpx;
+  max-width: 70%;
+  margin-right: auto;
+  font-size: 28rpx;
+  line-height: 1.6;
+  box-shadow: 0 4rpx 16rpx rgba(0,0,0,0.06);
+}
+
+/* 状态点 */
+.status-dot {
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 8rpx;
+}
+
+.status-dot.online { background: #4caf50; }
+.status-dot.offline { background: #aaaaaa; }
+.status-dot.busy { background: #ff9800; }

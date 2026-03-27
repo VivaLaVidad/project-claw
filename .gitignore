@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# 环境变量（含密钥，不提交）
+.env
+
+# 日志
+logs/
+*.log
+
+# 数据库
+claw_db/
+rag_db/
+
+# 图片截图（运行时产物）
+chat_crop.png
+check_send.png
+current_screen.png
+
+# 虚拟环境
+maic_env/
+venv/
+.venv/
+
+# 临时文件
+append_content.txt
+lobster_mvp_append.txt
+merge.py
+fix.py

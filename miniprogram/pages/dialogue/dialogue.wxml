@@ -1,0 +1,102 @@
+<!-- pages/dialogue/dialogue.wxml -->
+<view class="dialogue-container">
+
+  <!-- 顶部会话信息 -->
+  <view class="session-header">
+    <view class="session-info">
+      <text class="session-item">{{itemName}}</text>
+      <text class="session-merchant">商家：{{merchantId}}</text>
+    </view>
+    <view class="session-meta">
+      <view class="ws-badge {{wsStatus}}">
+        <view class="ws-dot"></view>
+        <text>{{wsStatus === 'connected' ? '实时' : '断开'}}</text>
+      </view>
+      <view wx:if="{{!isClosed}}" class="close-btn" bindtap="onCloseSession">结束</view>
+      <view wx:else class="closed-badge">已结束</view>
+    </view>
+  </view>
+
+  <!-- 满意度指示器 -->
+  <view wx:if="{{satisfaction}}" class="satisfaction-bar">
+    <text class="sat-label">满意度</text>
+    <view class="sat-track">
+      <view class="sat-fill" style="width:{{satisfaction.overall}}%"></view>
+    </view>
+    <text class="sat-value">{{satisfaction.overall}}%</text>
+  </view>
+
+  <!-- 对话消息列表 -->
+  <scroll-view scroll-y class="msg-list" scroll-into-view="msg-bottom" enhanced>
+
+    <view wx:if="{{turns.length === 0}}" class="empty-state">
+      <text class="empty-icon">💬</text>
+      <text class="empty-text">等待商家回复...</text>
+    </view>
+
+    <view wx:for="{{turns}}" wx:key="turn_id" class="msg-row {{item.sender_role === 'CLIENT' ? 'row-right' : 'row-left'}}">
+
+      <!-- 商家头像 -->
+      <view wx:if="{{item.sender_role !== 'CLIENT'}}" class="avatar avatar-merchant">🏪</view>
+
+      <view class="msg-body">
+        <!-- 角色标签 -->
+        <view class="msg-role">
+          <text>{{item.sender_role === 'CLIENT' ? '我' : '商家 Agent'}}</text>
+          <text class="msg-round">  Round {{item.round}}</text>
+        </view>
+
+        <!-- 气泡 -->
+        <view class="{{item.sender_role === 'CLIENT' ? 'bubble-client' : 'bubble-merchant'}}">
+          <text class="bubble-text">{{item.text}}</text>
+          <view wx:if="{{item.offered_price || item.expected_price}}" class="bubble-price">
+            <text class="price-tag">¥{{item.offered_price || item.expected_price}}</text>
+          </view>
+        </view>
+
+        <!-- 策略提示（可折叠）-->
+        <view wx:if="{{item.strategy_hint}}" class="hint-chip">
+          <text>💡 {{item.strategy_hint}}</text>
+        </view>
+      </view>
+
+      <!-- 客户头像 -->
+      <view wx:if="{{item.sender_role === 'CLIENT'}}" class="avatar avatar-client">🙋</view>
+
+    </view>
+
+    <view id="msg-bottom" style="height:24rpx"></view>
+
+  </scroll-view>
+
+  <!-- 输入区 -->
+  <view wx:if="{{!isClosed}}" class="input-area">
+    <input
+      class="chat-input"
+      placeholder="输入消息..."
+      value="{{inputText}}"
+      bindinput="onInputText"
+      maxlength="200"
+      confirm-type="send"
+      bindconfirm="onSendTurn"
+    />
+    <input
+      class="price-input"
+      placeholder="出价（可选）"
+      value="{{inputPrice}}"
+      bindinput="onInputPrice"
+      type="digit"
+      maxlength="8"
+    />
+    <button
+      class="send-btn"
+      bindtap="onSendTurn"
+      disabled="{{isLoading}}"
+      loading="{{isLoading}}"
+    >发送</button>
+  </view>
+
+  <!-- 已关闭提示 -->
+  <view wx:else class="closed-tip">对话已结束，可查看订单记录</view>
+
+</view>

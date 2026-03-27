@@ -1,0 +1,93 @@
+/* pages/index/index.wxss */
+.header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 0 32rpx;
+}
+.header-title {
+  font-size: 52rpx;
+  font-weight: 800;
+  color: #1a1a2e;
+  letter-spacing: -1rpx;
+}
+.server-status {
+  display: flex;
+  align-items: center;
+  background: #f5f5f5;
+  border-radius: 20rpx;
+  padding: 8rpx 20rpx;
+}
+.status-text {
+  font-size: 22rpx;
+  color: #666;
+}
+.search-card {
+  background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
+  padding: 40rpx;
+}
+.card-label {
+  font-size: 24rpx;
+  color: rgba(255,255,255,0.6);
+  margin-bottom: 12rpx;
+  font-weight: 500;
+}
+.search-input {
+  background: rgba(255,255,255,0.1);
+  border-radius: 16rpx;
+  padding: 24rpx 28rpx;
+  color: #ffffff;
+  font-size: 32rpx;
+  width: 100%;
+  box-sizing: border-box;
+}
+.search-input::placeholder { color: rgba(255,255,255,0.3); }
+.action-row {
+  display: flex;
+  gap: 20rpx;
+  margin-top: 36rpx;
+}
+.btn-half {
+  flex: 1;
+  font-size: 28rpx;
+  padding: 24rpx 0;
+}
+.btn-primary.btn-half {
+  background: linear-gradient(135deg, #e94560 0%, #c73652 100%);
+  color: #fff;
+  border: none;
+  border-radius: 16rpx;
+}
+.btn-primary.btn-half::after { border: none; }
+.btn-secondary.btn-half {
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  border: 1rpx solid rgba(255,255,255,0.3);
+  border-radius: 16rpx;
+}
+.btn-secondary.btn-half::after { border: none; }
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.panel-title { font-size: 30rpx; font-weight: 600; color: #1a1a2e; }
+.panel-arrow { font-size: 24rpx; color: #aaa; }
+.profile-row { margin-top: 20rpx; }
+.profile-label { font-size: 24rpx; color: #666; display: block; margin-bottom: 8rpx; }
+.section-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin-bottom: 16rpx;
+}
+.offer-card { padding: 28rpx; }
+.offer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12rpx;
+}
+.offer-merchant { font-size: 28rpx; font-weight: 600; color: #1a1a2e; }
+.offer-desc { font-size: 26rpx; color: #666; margin-bottom: 16rpx; line-height: 1.5; }
+.offer-meta { display: flex; flex-wrap: wrap; }

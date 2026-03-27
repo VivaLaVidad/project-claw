@@ -1,0 +1,101 @@
+<!-- pages/index/index.wxml -->
+<view class="container">
+
+  <!-- 顶部状态栏 -->
+  <view class="header-bar">
+    <view class="header-title">Project Claw</view>
+    <view class="server-status">
+      <view class="status-dot {{serverStatus === 'online' ? 'online' : 'offline'}}"></view>
+      <text class="status-text">{{serverStatus === 'online' ? '已连接' : '离线'}}</text>
+    </view>
+  </view>
+
+  <!-- 搜索卡片 -->
+  <view class="card search-card">
+    <view class="card-label">我想要</view>
+    <input
+      class="search-input"
+      placeholder="输入商品名，如：牛肉面"
+      value="{{itemName}}"
+      bindinput="onItemNameInput"
+      maxlength="32"
+    />
+    <view class="card-label" style="margin-top:24rpx">预算（元）</view>
+    <input
+      class="search-input"
+      placeholder="输入最高预算，如：16"
+      value="{{expectedPrice}}"
+      bindinput="onPriceInput"
+      type="digit"
+      maxlength="8"
+    />
+
+    <view class="action-row">
+      <button
+        class="btn-primary btn-half"
+        bindtap="onStartDialogue"
+        disabled="{{isLoading}}"
+        loading="{{isLoading}}"
+      >🤖 智能谈判</button>
+      <button
+        class="btn-secondary btn-half"
+        bindtap="onBroadcastIntent"
+        disabled="{{isLoading}}"
+      >📡 快速广播</button>
+    </view>
+  </view>
+
+  <!-- 个性化画像面板 -->
+  <view class="card">
+    <view class="panel-header" bindtap="onToggleProfile">
+      <text class="panel-title">⚙️ 我的偏好设置</text>
+      <text class="panel-arrow">{{showProfilePanel ? '▲' : '▼'}}</text>
+    </view>
+    <block wx:if="{{showProfilePanel}}">
+      <view class="profile-row">
+        <text class="profile-label">预算下限 ¥{{profile.budget_min}}</text>
+        <slider min="5" max="50" value="{{profile.budget_min}}" step="1"
+          data-key="budget_min" bindchange="onProfileChange" activeColor="#e94560" />
+      </view>
+      <view class="profile-row">
+        <text class="profile-label">预算上限 ¥{{profile.budget_max}}</text>
+        <slider min="10" max="200" value="{{profile.budget_max}}" step="1"
+          data-key="budget_max" bindchange="onProfileChange" activeColor="#e94560" />
+      </view>
+      <view class="profile-row">
+        <text class="profile-label">价格敏感度 {{(profile.price_sensitivity * 100).toFixed(0)}}%</text>
+        <slider min="0" max="100" value="{{profile.price_sensitivity * 100}}" step="5"
+          data-key="price_sensitivity" bindchange="onProfileChange" activeColor="#e94560" />
+      </view>
+      <view class="profile-row">
+        <text class="profile-label">时效要求 {{(profile.time_urgency * 100).toFixed(0)}}%</text>
+        <slider min="0" max="100" value="{{profile.time_urgency * 100}}" step="5"
+          data-key="time_urgency" bindchange="onProfileChange" activeColor="#e94560" />
+      </view>
+    </block>
+  </view>
+
+  <!-- 广播结果 -->
+  <block wx:if="{{recentOffers.length > 0}}">
+    <view class="section-title">📦 商家报价</view>
+    <view wx:for="{{recentOffers}}" wx:key="merchant_id" class="card offer-card">
+      <view class="offer-header">
+        <text class="offer-merchant">{{item.merchant_id}}</text>
+        <text class="price"><text class="price-unit">¥</text>{{item.final_price}}</text>
+      </view>
+      <view class="offer-desc">{{item.reply_text}}</view>
+      <view class="offer-meta">
+        <text class="tag">评分 {{item.match_score.toFixed(1)}}</text>
+        <text class="tag tag-blue">{{item.eta_minutes}}分钟</text>
+        <text wx:for="{{item.offer_tags}}" wx:key="*this" class="tag tag-green">{{item}}</text>
+      </view>
+    </view>
+  </block>
+
+  <!-- 空状态 -->
+  <view wx:if="{{recentOffers.length === 0 && !isLoading}}" class="empty-state">
+    <text class="empty-icon">🦞</text>
+    <text class="empty-text">输入商品开始智能匹配</text>
+  </view>
+
+</view>

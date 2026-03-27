@@ -1,0 +1,15 @@
+# Project Claw 核心开发规范
+
+## 1. 物理边界约束 (Strict Boundaries)
+- **Shared层** (@shared/): 仅限 Pydantic 模型和基础加密工具。严禁引入 FastAPI 或 uiautomator2。
+- **Cloud层** (@cloud_server/): 逻辑中枢。禁止引入任何硬件控制库。必须保持无状态，以支持水平扩展。
+- **Edge层** (@edge_box/): 核心执行区。所有的 LLM 调用必须经过 `CircuitBreaker` (熔断器) 和 `Watchdog` (看门狗)。
+
+## 2. 执行层去耦策略 (Driver Abstraction) - 重要！
+- 严禁在业务逻辑中直接调用 `d.click` 或 `u2.connect`。
+- 所有物理操作必须通过 `BaseDriver` 抽象基类进行。当前实现为 `U2Driver`，未来预留 `AccessibilityDriver` 接口。
+
+## 3. 技术偏好
+- 异步优先：IO 操作必须使用 `asyncio`。
+- 容错：所有 API 调用必须包含 `tenacity` 重试机制。
+- 协议：A2A 通信必须强制执行 AES-GCM 加密和 HMAC 签名校验。

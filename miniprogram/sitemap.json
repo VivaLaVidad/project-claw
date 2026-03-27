@@ -1,0 +1,9 @@
+{
+  "description": "关于本项目的索引配置",
+  "rules": [
+    {
+      "action": "allow",
+      "page": "*"
+    }
+  ]
+}

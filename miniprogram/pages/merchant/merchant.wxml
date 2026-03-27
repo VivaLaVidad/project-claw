@@ -1,0 +1,103 @@
+<!-- pages/merchant/merchant.wxml -->
+<view class="container">
+
+  <view class="page-header">
+    <text class="page-title">商家控制台</text>
+    <view class="online-badge {{isOnline ? 'online' : 'offline'}}">
+      <view class="status-dot {{isOnline ? 'online' : 'offline'}}"></view>
+      <text>{{isOnline ? '在线' : '离线'}}</text>
+    </view>
+  </view>
+
+  <!-- 服务统计 -->
+  <view wx:if="{{stats}}" class="card stats-card">
+    <view class="stats-title">📊 实时数据</view>
+    <view class="stats-grid">
+      <view class="stat-item">
+        <text class="stat-value">{{stats.online_merchants || 0}}</text>
+        <text class="stat-label">在线商家</text>
+      </view>
+      <view class="stat-item">
+        <text class="stat-value">{{stats.metrics.intent_total || 0}}</text>
+        <text class="stat-label">总意图数</text>
+      </view>
+      <view class="stat-item">
+        <text class="stat-value">{{stats.metrics.execute_success || 0}}</text>
+        <text class="stat-label">成交次数</text>
+      </view>
+      <view class="stat-item">
+        <text class="stat-value">{{stats.metrics.offer_total || 0}}</text>
+        <text class="stat-label">报价次数</text>
+      </view>
+    </view>
+    <view class="refresh-row" bindtap="onRefreshStats">↻ 刷新数据</view>
+  </view>
+
+  <!-- 当前画像展示 -->
+  <view wx:if="{{profile}}" class="card">
+    <view class="panel-header" bindtap="onToggleProfileEdit">
+      <text class="panel-title">🏪 商家画像配置</text>
+      <text class="panel-arrow">{{showProfileEdit ? '▲' : '▼'}}</text>
+    </view>
+
+    <block wx:if="{{!showProfileEdit}}">
+      <view class="profile-summary">
+        <view class="summary-row">
+          <text class="summary-label">商家 ID</text>
+          <text class="summary-value">{{profile.merchant_id}}</text>
+        </view>
+        <view class="summary-row">
+          <text class="summary-label">底价 / 常规价</text>
+          <text class="summary-value">¥{{profile.bottom_price}} / ¥{{profile.normal_price}}</text>
+        </view>
+        <view class="summary-row">
+          <text class="summary-label">最大让价</text>
+          <text class="summary-value">{{(profile.max_discount_rate*100).toFixed(0)}}%</text>
+        </view>
+        <view class="summary-row">
+          <text class="summary-label">配送时效</text>
+          <text class="summary-value">{{profile.delivery_time_minutes}} 分钟</text>
+        </view>
+        <view class="summary-row">
+          <text class="summary-label">质量评分</text>
+          <text class="summary-value">{{(profile.quality_score*100).toFixed(0)}}%</text>
+        </view>
+      </view>
+    </block>
+
+    <block wx:if="{{showProfileEdit && editProfile}}">
+      <view class="edit-form">
+        <view class="form-row">
+          <text class="form-label">底价 (¥)</text>
+          <input class="form-input" type="digit" value="{{editProfile.bottom_price}}"
+            data-key="bottom_price" bindinput="onEditField" />
+        </view>
+        <view class="form-row">
+          <text class="form-label">常规价 (¥)</text>
+          <input class="form-input" type="digit" value="{{editProfile.normal_price}}"
+            data-key="normal_price" bindinput="onEditField" />
+        </view>
+        <view class="form-row">
+          <text class="form-label">最大让价 (%)</text>
+          <input class="form-input" type="digit" value="{{editProfile.max_discount_rate * 100}}"
+            data-key="max_discount_rate" bindinput="onEditField" />
+        </view>
+        <view class="form-row">
+          <text class="form-label">配送时效 (分钟)</text>
+          <input class="form-input" type="number" value="{{editProfile.delivery_time_minutes}}"
+            data-key="delivery_time_minutes" bindinput="onEditField" />
+        </view>
+        <button class="btn-primary" bindtap="onSaveProfile"
+          loading="{{isLoading}}" disabled="{{isLoading}}">保存画像</button>
+      </view>
+    </block>
+  </view>
+
+  <!-- 商家 ID 显示 -->
+  <view class="card merchant-id-card">
+    <text class="mid-label">当前商家节点 ID</text>
+    <text class="mid-value">{{merchantId}}</text>
+    <text class="mid-hint">请确保 B 端监听器以此 ID 连接云端</text>
+  </view>
+
+</view>

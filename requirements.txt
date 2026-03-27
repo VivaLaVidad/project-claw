@@ -1,0 +1,43 @@
+# Project Claw v11.0 依赖清单
+
+# 设备控制
+uiautomator2>=2.16.11
+
+# HTTP 请求
+requests>=2.28.0
+tenacity>=8.2.0
+rich>=13.7.0
+websockets>=12.0
+redis>=5.0.0
+
+# OCR
+easyocr>=1.7.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# 深度学习后端
+torch>=2.0.0
+torchvision>=0.15.0
+
+# 配置管理
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# 多智能体
+langgraph>=0.1.0
+langchain-core>=0.1.0
+textual>=0.58.0
+
+# RAG 向量数据库
+chromadb>=0.4.0
+
+# Excel 支持（可选）
+openpyxl>=3.1.0
+pandas>=2.0.0
+
+# 图像处理
+Pillow>=10.0.0
+
+# 安全通信（A2A 签名/加密）
+cryptography>=42.0.0

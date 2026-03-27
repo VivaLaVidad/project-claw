@@ -1,0 +1,57 @@
+<!-- pages/orders/orders.wxml -->
+<view class="container">
+
+  <view class="page-header">
+    <text class="page-title">订单记录</text>
+    <view class="refresh-btn" bindtap="onRefresh"><text>↻ 刷新</text></view>
+  </view>
+
+  <view wx:if="{{isLoading && orders.length === 0}}" class="loading-wrap">
+    <text>加载中...</text>
+  </view>
+
+  <view wx:elif="{{orders.length === 0}}" class="empty-state">
+    <text class="empty-icon">📋</text>
+    <text class="empty-text">暂无订单记录</text>
+  </view>
+
+  <view wx:else>
+    <view
+      wx:for="{{orders}}"
+      wx:key="intent_id"
+      class="card order-card"
+      bindtap="onTapOrder"
+      data-intent-id="{{item.intent_id}}"
+    >
+      <view class="order-header">
+        <view class="order-demand">{{item.demand_text || '未知需求'}}</view>
+        <view class="order-status {{statusClass(item.status)}}">{{statusText(item.status)}}</view>
+      </view>
+      <view class="order-meta">
+        <text class="meta-item">预算：¥{{item.max_price || '-'}}</text>
+        <text class="meta-item">{{item.location || '-'}}</text>
+        <text class="meta-item">{{item.created_at ? item.created_at : '-'}}</text>
+      </view>
+
+      <!-- 展开详情 -->
+      <block wx:if="{{activeSessionId === item.intent_id && activeDetail}}">
+        <view class="divider"></view>
+        <view class="detail-section">
+          <view class="detail-row">
+            <text class="detail-label">Intent ID</text>
+            <text class="detail-value small">{{activeDetail.intent_id}}</text>
+          </view>
+          <view wx:if="{{activeDetail.selected_offer}}" class="detail-row">
+            <text class="detail-label">成交商家</text>
+            <text class="detail-value">{{activeDetail.selected_offer.merchant_id}}</text>
+          </view>
+          <view wx:if="{{activeDetail.selected_offer}}" class="detail-row">
+            <text class="detail-label">成交价格</text>
+            <text class="detail-value price">¥{{activeDetail.selected_offer.final_price}}</text>
+          </view>
+        </view>
+      </block>
+    </view>
+  </view>
+
+</view>

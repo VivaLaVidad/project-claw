@@ -1,0 +1,130 @@
+version: '3.8'
+
+services:
+  # 既有主服务（保留）
+  project-claw:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: project-claw-main
+    ports:
+      - "8000:8000"
+    environment:
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - FEISHU_APP_ID=${FEISHU_APP_ID}
+      - FEISHU_APP_SECRET=${FEISHU_APP_SECRET}
+      - OPENCLAW_CONFIG_PATH=/app/openclaw_config
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./logs:/app/logs
+      - ./openclaw_config:/app/openclaw_config
+    networks:
+      - project-claw-network
+    restart: unless-stopped
+
+  # 既有 API 服务（保留）
+  api-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: project-claw-api
+    ports:
+      - "8001:8000"
+    environment:
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - FEISHU_APP_ID=${FEISHU_APP_ID}
+      - FEISHU_APP_SECRET=${FEISHU_APP_SECRET}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - project-claw-network
+    command: python api_server_pro.py
+    restart: unless-stopped
+    depends_on:
+      - project-claw
+
+  # Redis：幂等/画像/运行时策略持久化
+  redis:
+    image: redis:7-alpine
+    container_name: project-claw-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - project-claw-network
+    restart: unless-stopped
+
+  # A2A 信令核心服务（工业链路）
+  signaling-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: project-claw-signaling
+    ports:
+      - "8765:8765"
+    command: python a2a_signaling_server.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
+      - REDIS_URL=redis://redis:6379/0
+      - PROFILE_TTL_SECONDS=${PROFILE_TTL_SECONDS:-86400}
+      - IDEMPOTENCY_TTL_SECONDS=${IDEMPOTENCY_TTL_SECONDS:-300}
+      - EXECUTE_TRADE_SEND_TIMEOUT_SECONDS=${EXECUTE_TRADE_SEND_TIMEOUT_SECONDS:-4.0}
+      - SIGNALING_HOST=0.0.0.0
+      - SIGNALING_PORT=8765
+      - A2A_SIGNING_SECRET=${A2A_SIGNING_SECRET}
+      - A2A_ENCRYPTION_KEY=${A2A_ENCRYPTION_KEY}
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - project-claw-network
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: project-claw-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - project-claw-network
+    depends_on:
+      - signaling-server
+    restart: unless-stopped
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: project-claw-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GF_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_ADMIN_PASSWORD:-admin123}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - project-claw-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+networks:
+  project-claw-network:
+    driver: bridge
+
+volumes:
+  logs:
+  openclaw_config:
+  redis_data:
+  grafana_data:

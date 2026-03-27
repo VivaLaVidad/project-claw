@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: 'Project Claw Dashboards'
+    orgId: 1
+    folder: 'Project Claw'
+    type: file
+    disableDeletion: false
+    editable: false
+    options:
+      path: /var/lib/grafana/dashboards
