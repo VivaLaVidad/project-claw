@@ -139,10 +139,23 @@ class Settings(BaseSettings):
 
     @property
     def signaling_http_base_url(self) -> str:
+        # 若直接设置了 A2A_SIGNALING_URL，转换为 http base
+        if self.A2A_SIGNALING_URL:
+            import re
+            m = re.match(r"(wss?://[^/]+)", self.A2A_SIGNALING_URL)
+            if m:
+                base = m.group(1).replace("wss://", "https://").replace("ws://", "http://")
+                return base
         return f"{self.SIGNALING_HTTP_SCHEME}://{self.SIGNALING_HOST}:{self.SIGNALING_PORT}"
 
     @property
     def signaling_ws_base_url(self) -> str:
+        # 若直接设置了 A2A_SIGNALING_URL，提取 base（scheme+host+port）
+        if self.A2A_SIGNALING_URL:
+            import re
+            m = re.match(r"(wss?://[^/]+)", self.A2A_SIGNALING_URL)
+            if m:
+                return m.group(1)
         return f"{self.SIGNALING_WS_SCHEME}://{self.SIGNALING_HOST}:{self.SIGNALING_PORT}"
 
     @property

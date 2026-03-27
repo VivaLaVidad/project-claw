@@ -148,7 +148,7 @@ with ws_col:
     else:
         st.markdown("<span style='color:#ff3b5c;font-size:13px'>● 后端离线 — 演示模式</span>",unsafe_allow_html=True)
 with demo_col:
-    if st.button("🎭 注入演示数据",use_container_width=True):
+    if st.button("🎭 注入演示数据",width='stretch'):
         st.session_state.mock_mode=True
         run_mock_tick()
 
@@ -174,7 +174,7 @@ with map_col:
     layers=[pdk.Layer("ScatterplotLayer",data=map_df,get_position=["lon","lat"],get_color="color",get_radius=80,pickable=True)]
     if lines:
         layers.append(pdk.Layer("LineLayer",data=pd.DataFrame(lines),get_source_position="src",get_target_position="tgt",get_color="color",get_width=3))
-    st.pydeck_chart(pdk.Deck(layers=layers,initial_view_state=pdk.ViewState(latitude=31.1305,longitude=121.4300,zoom=15,pitch=0),map_style="mapbox://styles/mapbox/dark-v11"),use_container_width=True)
+    st.pydeck_chart(pdk.Deck(layers=layers,initial_view_state=pdk.ViewState(latitude=31.1305,longitude=121.4300,zoom=15,pitch=0),map_style="mapbox://styles/mapbox/dark-v11"),width='stretch')
 
 with log_col:
     st.markdown("### 🧠 A2A 脑机接口 · 实时 CoT 日志")
@@ -195,7 +195,7 @@ if st.session_state.recent_trades:
         df["时间"]=df["ts"].apply(lambda x:_dt.fromtimestamp(float(x)).strftime("%H:%M:%S"))
     cols=[c for c in ["时间","merchant_id","item","normal_price","final_price","savings"] if c in df.columns]
     rename={"merchant_id":"商家","item":"商品","normal_price":"原价","final_price":"成交价","savings":"节省"}
-    st.dataframe(df[cols].rename(columns=rename).tail(20),use_container_width=True,hide_index=True)
+    st.dataframe(df[cols].rename(columns=rename).tail(20),width='stretch',hide_index=True)
 
 time.sleep(2)
 st.rerun()
