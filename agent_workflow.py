@@ -32,7 +32,13 @@ from tenacity import (
     retry_if_exception_type,
     before_sleep_log,
 )
-from langgraph.graph import StateGraph, END
+try:
+    from langgraph.graph import StateGraph, END
+    _LANGGRAPH_AVAILABLE = True
+except ImportError:
+    _LANGGRAPH_AVAILABLE = False
+    StateGraph = None
+    END = "__end__"
 
 from config import settings
 from llm_client import LLMClient
@@ -329,6 +335,9 @@ def build_workflow(api_key: str):
     global _API_KEY
     _API_KEY = api_key
 
+    if not _LANGGRAPH_AVAILABLE or StateGraph is None:
+        # Railway 云端无 langgraph，使用简化版谈判逻辑
+        return _simple_negotiate(state)
     g = StateGraph(AgentState)
     g.add_node("router",     router_node)
     g.add_node("rag",        rag_inventory_node)
