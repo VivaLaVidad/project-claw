@@ -1,11 +1,11 @@
-# railway.toml - Railway 部署配置
+# railway.toml - Railway 部署配置（修复版）
 [build]
 builder = "nixpacks"
-buildCommand = "pip install -r requirements.txt"
+buildCommand = "pip install --no-cache-dir -r requirements.txt"
 
 [deploy]
-startCommand = "uvicorn a2a_signaling_server:app --host 0.0.0.0 --port $PORT --workers 1"
+startCommand = "uvicorn a2a_signaling_server:app --host 0.0.0.0 --port 8080 --workers 1 --log-level info"
 healthcheckPath = "/health"
-healthcheckTimeout = 30
+healthcheckTimeout = 60
 restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 3
+restartPolicyMaxRetries = 5
