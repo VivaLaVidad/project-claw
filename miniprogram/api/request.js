@@ -198,10 +198,69 @@ class DialogueWSListener {
   }
 }
 
+// ─── A2A 全自动谈判 API（B端Agent驱动）───
+
+function AgentNegotiationAPI(request) {
+  return {
+    /**
+     * 启动 B/C 双端 Agent 全自动谈判
+     * C端Agent分析预算偏好，B端Agent根据画像自动报价砍价
+     */
+    startAutoNegotiation({ clientId, itemName, expectedPrice, maxDistanceKm = 8.0 }) {
+      return request({
+        method: 'POST',
+        path: '/a2a/intent',
+        data: {
+          client_id: clientId,
+          item_name: itemName,
+          expected_price: expectedPrice,
+          max_distance_km: maxDistanceKm,
+          timestamp: Date.now() / 1000,
+          mode: 'auto',  // 全自动谈判模式
+        },
+      });
+    },
+
+    /** 查询自动谈判结果 */
+    pollResult(intentId) {
+      return request({ method: 'GET', path: `/a2a/intent/${intentId}/result` });
+    },
+
+    /** 获取推荐商家列表（B端Agent排序）*/
+    getRecommendedMerchants({ itemName, budget, limit = 5 }) {
+      return request({
+        method: 'POST',
+        path: '/a2a/match',
+        data: { item_name: itemName, budget, limit },
+      });
+    },
+
+    /** C端Agent上报满意度反馈（用于 B端 Agent 学习）*/
+    reportSatisfaction({ sessionId, clientId, score, priceScore, timeScore }) {
+      return request({
+        method: 'POST',
+        path: '/a2a/dialogue/satisfaction',
+        data: { session_id: sessionId, client_id: clientId,
+                overall: score, price: priceScore, time: timeScore },
+      });
+    },
+
+    /** 触发执行（通知 B端 Edge Box 实际下单）*/
+    executeTradeOrder({ merchantId, finalPrice, item, clientId }) {
+      return request({
+        method: 'POST',
+        path: '/api/v1/trade/execute',
+        data: { merchant_id: merchantId, final_price: finalPrice, item, client_id: clientId },
+      });
+    },
+  };
+}
+
 module.exports = {
   createRequest,
   DialogueAPI,
   IntentAPI,
   SystemAPI,
+  AgentNegotiationAPI,
   DialogueWSListener,
 };

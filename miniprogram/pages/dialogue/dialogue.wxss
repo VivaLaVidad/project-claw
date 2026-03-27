@@ -5,6 +5,102 @@
   height: 100vh;
   background: #f0f2f5;
 }
+.session-header {
+  background: #1a1a2e;
+  padding: 24rpx 32rpx;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+.session-info { flex: 1; }
+.session-item { font-size: 34rpx; font-weight: 700; color: #fff; display: block; }
+.session-merchant { font-size: 22rpx; color: rgba(255,255,255,.55); margin-top: 4rpx; display: block; }
+.session-meta { display: flex; align-items: center; gap: 16rpx; }
+.ws-badge {
+  display: flex; align-items: center; gap: 8rpx;
+  background: rgba(255,255,255,.1); border-radius: 20rpx;
+  padding: 8rpx 16rpx; font-size: 22rpx; color: rgba(255,255,255,.7);
+}
+.ws-badge.connected .ws-dot { background: #4caf50; }
+.ws-badge.disconnected .ws-dot { background: #f44336; }
+.ws-dot { width: 12rpx; height: 12rpx; border-radius: 50%; }
+.close-btn { background: #e94560; color: #fff; border-radius: 12rpx; padding: 8rpx 20rpx; font-size: 24rpx; }
+.closed-badge { background: rgba(255,255,255,.2); color: rgba(255,255,255,.6); border-radius: 12rpx; padding: 8rpx 20rpx; font-size: 24rpx; }
+.satisfaction-bar {
+  display: flex; align-items: center; gap: 16rpx;
+  padding: 16rpx 32rpx; background: #fff;
+  border-bottom: 1rpx solid #f0f0f0; flex-shrink: 0;
+}
+.sat-label { font-size: 22rpx; color: #888; width: 80rpx; }
+.sat-track { flex: 1; height: 12rpx; background: #f0f0f0; border-radius: 6rpx; overflow: hidden; }
+.sat-fill { height: 100%; background: linear-gradient(90deg, #30d158, #34c759); border-radius: 6rpx; transition: width .4s; }
+.sat-value { font-size: 24rpx; color: #30d158; font-weight: 700; width: 64rpx; text-align: right; }
+.msg-list { flex: 1; padding: 24rpx 24rpx 0; overflow: hidden; }
+.msg-row { display: flex; align-items: flex-end; gap: 16rpx; margin-bottom: 32rpx; }
+.row-right { flex-direction: row-reverse; }
+.row-left  { flex-direction: row; }
+.avatar { width: 72rpx; height: 72rpx; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 40rpx; flex-shrink: 0; }
+.avatar-merchant { background: #e6eeff; }
+.avatar-client   { background: #e6f0ff; }
+.msg-body { max-width: 72%; }
+.msg-role { font-size: 22rpx; color: #aaa; margin-bottom: 8rpx; display: flex; gap: 8rpx; }
+.row-right .msg-role { flex-direction: row-reverse; }
+.msg-round { color: #ccc; }
+.bubble-client {
+  background: linear-gradient(135deg, #e94560, #c73652);
+  color: #fff; border-radius: 24rpx 24rpx 8rpx 24rpx;
+  padding: 20rpx 28rpx; box-shadow: 0 4rpx 16rpx rgba(233,69,96,.25);
+}
+.bubble-merchant {
+  background: #fff; color: #1a1a2e;
+  border-radius: 24rpx 24rpx 24rpx 8rpx;
+  padding: 20rpx 28rpx; box-shadow: 0 4rpx 16rpx rgba(0,0,0,.06);
+}
+.bubble-text { display: block; line-height: 1.6; font-size: 28rpx; }
+.bubble-price { margin-top: 12rpx; border-top: 1rpx solid rgba(0,0,0,.08); padding-top: 8rpx; display: flex; align-items: center; gap: 12rpx; }
+.price-tag { font-size: 36rpx; font-weight: 700; color: #e94560; }
+.final-tag { font-size: 22rpx; color: #30d158; font-weight: 600; }
+.hint-chip { background: #fffbf0; border: 1rpx solid #ffe58f; border-radius: 12rpx; padding: 8rpx 16rpx; font-size: 20rpx; color: #8a6d00; margin-top: 8rpx; line-height: 1.5; }
+.input-area {
+  display: flex; align-items: center; gap: 12rpx;
+  padding: 16rpx 24rpx; background: #fff;
+  border-top: 1rpx solid #f0f0f0; flex-shrink: 0;
+}
+.chat-input { flex: 1; background: #f5f5f5; border-radius: 12rpx; padding: 20rpx 24rpx; font-size: 28rpx; min-height: 72rpx; }
+.price-input { width: 120rpx; background: #f5f5f5; border-radius: 12rpx; padding: 20rpx 16rpx; font-size: 26rpx; text-align: center; }
+.send-btn { background: #e94560; color: #fff; border: none; border-radius: 12rpx; padding: 20rpx 28rpx; font-size: 28rpx; white-space: nowrap; flex-shrink: 0; }
+.send-btn::after { border: none; }
+.closed-tip { text-align: center; color: #aaa; font-size: 26rpx; padding: 24rpx; background: #fff; border-top: 1rpx solid #f0f0f0; }
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80rpx 40rpx; color: #aaa; }
+.empty-icon { font-size: 80rpx; margin-bottom: 20rpx; }
+.empty-text { font-size: 28rpx; color: #aaa; }
+/* 满意度弹窗 */
+.sat-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.5);
+  display: flex; align-items: flex-end; z-index: 999;
+}
+.sat-card {
+  width: 100%; background: #fff;
+  border-radius: 32rpx 32rpx 0 0;
+  padding: 40rpx 32rpx 60rpx;
+}
+.sat-title { font-size: 36rpx; font-weight: 700; color: #1a1a2e; margin-bottom: 12rpx; text-align: center; }
+.sat-desc { font-size: 26rpx; color: #888; text-align: center; margin-bottom: 40rpx; line-height: 1.6; }
+.sat-btns { display: flex; gap: 16rpx; margin-bottom: 20rpx; }
+.sat-btn { flex: 1; border: none; border-radius: 16rpx; padding: 24rpx 0; font-size: 28rpx; font-weight: 600; }
+.sat-btn::after { border: none; }
+.sat-great { background: #e6f4ea; color: #2e7d32; }
+.sat-ok    { background: #fff3e0; color: #e65100; }
+.sat-bad   { background: #fce8e8; color: #c62828; }
+.sat-skip  { width: 100%; border: none; background: transparent; color: #aaa; font-size: 26rpx; padding: 16rpx; }
+.sat-skip::after { border: none; }
+
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #f0f2f5;
+}
 
 /* 顶部 */
 .session-header {

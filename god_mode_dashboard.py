@@ -15,6 +15,11 @@ from collections import deque
 import random
 from typing import Dict, List, Tuple
 
+# ─── 后端配置 ───
+BACKEND_BASE = "https://project-claw-production.up.railway.app"
+# 本地开发时改为: BACKEND_BASE = "http://127.0.0.1:8765"
+
+
 # ─── Streamlit 配置 ───
 st.set_page_config(
     page_title="Project Claw · 上帝视角",

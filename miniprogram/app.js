@@ -7,8 +7,8 @@ App({
     clientId: '',
     merchantId: '',
     userProfile: null,
-    serverBase: 'http://127.0.0.1:8765',   // 生产时改为公网地址
-    wsBase:     'ws://127.0.0.1:8765',
+    serverBase: 'https://project-claw-production.up.railway.app',
+    wsBase:     'wss://project-claw-production.up.railway.app',
     token: '',                              // INTERNAL_API_TOKEN（如有）
     isConnected: false,
   },

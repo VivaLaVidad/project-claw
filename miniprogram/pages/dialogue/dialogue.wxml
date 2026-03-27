@@ -5,6 +5,91 @@
   <view class="session-header">
     <view class="session-info">
       <text class="session-item">{{itemName}}</text>
+      <text class="session-merchant">🤖 B端Agent: {{merchantId}}</text>
+    </view>
+    <view class="session-meta">
+      <view class="ws-badge {{wsStatus}}">
+        <view class="ws-dot"></view>
+        <text>{{wsStatus === 'connected' ? '实时' : '断开'}}</text>
+      </view>
+      <view wx:if="{{!isClosed}}" class="close-btn" bindtap="onCloseSession">结束</view>
+      <view wx:else class="closed-badge">已结束</view>
+    </view>
+  </view>
+
+  <!-- 满意度指示器 -->
+  <view wx:if="{{satisfaction}}" class="satisfaction-bar">
+    <text class="sat-label">Agent满意度</text>
+    <view class="sat-track">
+      <view class="sat-fill" style="width:{{satisfaction.overall}}%"></view>
+    </view>
+    <text class="sat-value">{{satisfaction.overall}}%</text>
+  </view>
+
+  <!-- 消息列表 -->
+  <scroll-view scroll-y class="msg-list" enhanced>
+    <view wx:if="{{turns.length === 0}}" class="empty-state">
+      <text class="empty-icon">💬</text>
+      <text class="empty-text">等待 B端Agent 回复...</text>
+    </view>
+
+    <view wx:for="{{turns}}" wx:key="turn_id"
+      class="msg-row {{item.sender_role === 'CLIENT' ? 'row-right' : 'row-left'}}">
+      <view wx:if="{{item.sender_role !== 'CLIENT'}}" class="avatar avatar-merchant">🤖</view>
+      <view class="msg-body">
+        <view class="msg-role">
+          <text>{{item.sender_role === 'CLIENT' ? '🙋 我（C端Agent）' : '🤖 B端Agent'}}</text>
+          <text class="msg-round">  Round {{item.round}}</text>
+        </view>
+        <view class="{{item.sender_role === 'CLIENT' ? 'bubble-client' : 'bubble-merchant'}}">
+          <text class="bubble-text">{{item.text}}</text>
+          <view wx:if="{{item.offered_price || item.expected_price}}" class="bubble-price">
+            <text class="price-tag">¥{{item.offered_price || item.expected_price}}</text>
+            <text wx:if="{{item.is_final}}" class="final-tag">✅ 成交价</text>
+          </view>
+        </view>
+        <view wx:if="{{item.strategy_hint}}" class="hint-chip">
+          <text>💡 {{item.strategy_hint}}</text>
+        </view>
+      </view>
+      <view wx:if="{{item.sender_role === 'CLIENT'}}" class="avatar avatar-client">🙋</view>
+    </view>
+    <view id="msg-bottom" style="height:24rpx"></view>
+  </scroll-view>
+
+  <!-- 输入区 -->
+  <view wx:if="{{!isClosed}}" class="input-area">
+    <input class="chat-input" placeholder="输入消息..."
+      value="{{inputText}}" bindinput="onInputText" maxlength="200"
+      confirm-type="send" bindconfirm="onSendTurn" />
+    <input class="price-input" placeholder="出价"
+      value="{{inputPrice}}" bindinput="onInputPrice" type="digit" maxlength="8" />
+    <button class="send-btn" bindtap="onSendTurn"
+      disabled="{{isLoading}}" loading="{{isLoading}}">发送</button>
+  </view>
+  <view wx:else class="closed-tip">对话已结束</view>
+
+  <!-- 满意度上报弹窗（C端Agent反馈驱动B端学习）-->
+  <view wx:if="{{showSatisfactionReport}}" class="sat-overlay">
+    <view class="sat-card">
+      <view class="sat-title">🧠 帮 Agent 变更聪明</view>
+      <view class="sat-desc">你的反馈将直接优化 B端Agent 的下次报价策略</view>
+      <view class="sat-btns">
+        <button class="sat-btn sat-great" bindtap="onSubmitSatisfaction" data-score="95">😍 很满意</button>
+        <button class="sat-btn sat-ok" bindtap="onSubmitSatisfaction" data-score="70">😊 还不错</button>
+        <button class="sat-btn sat-bad" bindtap="onSubmitSatisfaction" data-score="40">😐 一般</button>
+      </view>
+      <button class="sat-skip" bindtap="onDismissSatisfaction">跳过</button>
+    </view>
+  </view>
+
+</view>
+<view class="dialogue-container">
+
+  <!-- 顶部会话信息 -->
+  <view class="session-header">
+    <view class="session-info">
+      <text class="session-item">{{itemName}}</text>
       <text class="session-merchant">商家：{{merchantId}}</text>
     </view>
     <view class="session-meta">
