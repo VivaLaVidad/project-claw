@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>龙虾买手 - C端演示</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #0f1428 100%); color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; overflow: hidden; height: 100vh; }
+        .grid-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-image: linear-gradient(rgba(0, 255, 65, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 65, 0.03) 1px, transparent 1px); background-size: 50px 50px; pointer-events: none; z-index: 0; }
+        .glass { background: rgba(15, 20, 40, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(0, 255, 65, 0.1); border-radius: 24px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); }
+        .radar-btn { width: 200px; height: 200px; border-radius: 50%; background: linear-gradient(135deg, rgba(0, 255, 65, 0.2), rgba(255, 0, 110, 0.2)); border: 2px solid rgba(0, 255, 65, 0.5); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 700; transition: all 0.3s; position: relative; overflow: hidden; box-shadow: 0 0 30px rgba(0, 255, 65, 0.3); }
+        .radar-btn:hover { transform: scale(1.05); box-shadow: 0 0 50px rgba(0, 255, 65, 0.5); }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(0, 255, 65, 0.7); } 50% { box-shadow: 0 0 0 30px rgba(0, 255, 65, 0); } 100% { box-shadow: 0 0 0 60px rgba(0, 255, 65, 0); } }
+        .radar-active { animation: pulse 2s infinite; }
+        @keyframes scan { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .scan { position: absolute; width: 100%; height: 100%; border-radius: 50%; background: conic-gradient(from 0deg, rgba(0, 255, 65, 0.3) 0deg, transparent 90deg); animation: scan 3s linear infinite; }
+        .log-entry { padding: 8px 12px; margin: 4px 0; border-left: 3px solid #00ff41; background: rgba(0, 255, 65, 0.05); border-radius: 4px; font-family: monospace; font-size: 13px; }
+        .log-entry.warn { border-left-color: #ff9500; background: rgba(255, 149, 0, 0.05); }
+        .log-entry.err { border-left-color: #ff006e; background: rgba(255, 0, 110, 0.05); }
+        .hologram { background: linear-gradient(135deg, rgba(0, 255, 65, 0.1), rgba(255, 0, 110, 0.1)); backdrop-filter: blur(20px); border: 2px solid rgba(0, 255, 65, 0.3); border-radius: 24px; padding: 40px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); position: relative; overflow: hidden; }
+        @keyframes shine { 0% { transform: translate(-100%, -100%); } 100% { transform: translate(100%, 100%); } }
+        .hologram::before { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: linear-gradient(45deg, transparent 30%, rgba(0, 255, 65, 0.1) 50%, transparent 70%); animation: shine 3s infinite; pointer-events: none; }
+        @keyframes breath { 0%, 100% { box-shadow: 0 0 20px rgba(0, 255, 65, 0.5); } 50% { box-shadow: 0 0 40px rgba(0, 255, 65, 0.8); } }
+        .breath { animation: breath 2s ease-in-out infinite; }
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px); z-index: 40; }
+        @keyframes pop { 0% { opacity: 0; transform: scale(0.5); } 100% { opacity: 1; transform: scale(1); } }
+        .pop { animation: pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="grid-bg"></div>
+    <div class="relative w-full h-screen flex flex-col items-center justify-center p-8 z-10">
+        <div class="mb-12 text-center">
+            <h1 class="text-5xl font-bold mb-2 bg-gradient-to-r from-[#00ff41] to-[#ff006e] bg-clip-text text-transparent">🦞 龙虾买手</h1>
+            <p class="text-[#a0a0a0] text-lg">AI 驱动的极速砍价系统</p>
+        </div>
+        <div class="flex flex-col items-center gap-8 mb-12">
+            <button id="radarBtn" class="radar-btn" onclick="startRadar()">
+                <div class="scan hidden" id="scan"></div>
+                <span id="btnText">召唤龙虾买手</span>
+            </button>
+            <div id="status" class="text-[#00ff41] text-sm font-mono hidden">🔴 扫描中...</div>
+        </div>
+        <div class="glass w-full max-w-2xl h-64 p-6 overflow-y-auto">
+            <div class="text-sm font-mono text-[#a0a0a0] mb-4">📡 实时交易日志</div>
+            <div id="logs" class="space-y-2">
+                <div class="log-entry">💡 等待您的召唤...</div>
+            </div>
+        </div>
+    </div>
+    <div id="overlay" class="overlay hidden"></div>
+    <div id="card" class="hologram fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 hidden z-50 pop">
+        <div class="relative z-10">
+            <div class="text-center mb-8">
+                <div class="text-6xl mb-4">🎉</div>
+                <h2 class="text-3xl font-bold text-[#00ff41] mb-2">成交！</h2>
+                <p class="text-[#a0a0a0]">龙虾买手为您争取到最优价格</p>
+            </div>
+            <div class="glass p-6 mb-8 text-center">
+                <div class="text-sm text-[#a0a0a0] mb-2">最终成交价</div>
+                <div class="text-5xl font-bold text-[#00ff41]" id="price">¥12.50</div>
+            </div>
+            <button id="pay" class="breath w-full py-4 bg-gradient-to-r from-[#00ff41] to-[#00d4ff] text-black font-bold rounded-lg">✓ 确认唤起微信支付</button>
+            <button onclick="closeCard()" class="w-full mt-4 py-3 border border-[#00ff41] text-[#00ff41] font-bold rounded-lg">关闭</button>
+        </div>
+    </div>
+    <script>
+        const API = 'http://127.0.0.1:8765';
+        let active = false, es = null;
+        function startRadar() {
+            if (active) return;
+            active = true;
+            const btn = document.getElementById('radarBtn');
+            btn.classList.add('radar-active');
+            document.getElementById('btnText').textContent = '龙虾买手已激活';
+            document.getElementById('scan').classList.remove('hidden');
+            document.getElementById('status').classList.remove('hidden');
+            document.getElementById('logs').innerHTML = '';
+            log('🟢 龙虾买手已激活，正在扫描市场...', 'ok');
+            log('📍 正在定位最优商家...', 'ok');
+            fetch(`${API}/api/v1/trade/request`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ item_name: '龙虾', expected_price: 15.0, client_id: 'demo_' + Date.now() })
+            }).then(r => r.json()).then(d => {
+                log(`✅ 意图已发送 (ID: ${d.intent_id.substring(0, 8)}...)`, 'ok');
+                es = new EventSource(`${API}/api/v1/trade/stream/${d.intent_id}`);
+                es.onmessage = e => {
+                    const data = JSON.parse(e.data);
+                    if (data.type === 'OFFER_RECEIVED') log(`🔵 买手: 出价 ¥${data.price}`, 'ok');
+                    else if (data.type === 'MERCHANT_RESPONSE') log(`🟠 商家: ${data.message}`, 'warn');
+                    else if (data.type === 'NEGOTIATION_ROUND') log(`🔄 第 ${data.round} 轮谈判...`, 'ok');
+                    else if (data.type === 'MATCH_SUCCESS') { log(`🎉 成交! ¥${data.final_price}`, 'ok'); show(data.final_price); es.close(); }
+                    else if (data.type === 'MATCH_FAILED') { log(`⚠️ 失败: ${data.reason}`, 'err'); reset(); es.close(); }
+                };
+                es.onerror = () => { log('❌ 连接中断', 'err'); reset(); es.close(); };
+            }).catch(e => { log(`❌ 错误: ${e.message}`, 'err'); reset(); });
+        }
+        function log(msg, type = 'ok') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type === 'warn' ? 'warn' : type === 'err' ? 'err' : ''}`;
+            entry.textContent = msg;
+            document.getElementById('logs').appendChild(entry);
+            document.getElementById('logs').scrollTop = document.getElementById('logs').scrollHeight;
+        }
+        function show(price) {
+            document.getElementById('overlay').classList.remove('hidden');
+            document.getElementById('card').classList.remove('hidden');
+            document.getElementById('price').textContent = `¥${price.toFixed(2)}`;
+            document.getElementById('pay').onclick = () => { log('💳 正在唤起微信支付...', 'ok'); setTimeout(() => log('✅ 支付完成！', 'ok'), 1000); };
+        }
+        function closeCard() {
+            document.getElementById('overlay').classList.add('hidden');
+            document.getElementById('card').classList.add('hidden');
+            reset();
+        }
+        function reset() {
+            active = false;
+            document.getElementById('radarBtn').classList.remove('radar-active');
+            document.getElementById('btnText').textContent = '召唤龙虾买手';
+            document.getElementById('scan').classList.add('hidden');
+            document.getElementById('status').classList.add('hidden');
+        }
+        window.addEventListener('load', () => log('🚀 龙虾买手已就绪', 'ok'));
+    </script>
+</body>
+</html>
