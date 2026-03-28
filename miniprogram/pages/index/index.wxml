@@ -1,92 +1,79 @@
-<!-- pages/index/index.wxml -->
+<!-- pages/index/index.wxml v3.0 -->
 <view class="container">
 
-  <!-- 顶部状态栏 -->
-  <view class="header-bar">
-    <view class="header-title">Project Claw</view>
-    <view class="server-status">
-      <view class="status-dot {{serverStatus === 'online' ? 'online' : 'offline'}}"></view>
-      <text class="status-text">{{serverStatus === 'online' ? '已连接' : '离线'}}</text>
-    </view>
-  </view>
-
-  <!-- 搜索卡片 -->
-  <view class="card search-card">
-    <view class="card-label">我想要</view>
-    <input
-      class="search-input"
-      placeholder="输入商品名，如：牛肉面"
-      value="{{itemName}}"
-      bindinput="onItemNameInput"
-      maxlength="32"
-    />
-    <view class="card-label" style="margin-top:24rpx">预算（元）</view>
-    <input
-      class="search-input"
-      placeholder="输入最高预算，如：16"
-      value="{{expectedPrice}}"
-      bindinput="onPriceInput"
-      type="digit"
-      maxlength="8"
-    />
-
-    <!-- 三个操作按钮 -->
-    <view class="action-row">
-      <button
-        class="btn-primary btn-auto"
-        bindtap="onAutoNegotiate"
-        disabled="{{isLoading || autoNegotiating}}"
-        loading="{{autoNegotiating}}"
-      >🤖 Agent全自动砍价</button>
-    </view>
-    <view class="action-row" style="margin-top:16rpx">
-      <button
-        class="btn-half btn-manual"
-        bindtap="onStartDialogue"
-        disabled="{{isLoading}}"
-      >💬 手动谈判</button>
-      <button
-        class="btn-half btn-broadcast"
-        bindtap="onBroadcastIntent"
-        disabled="{{isLoading}}"
-      >📡 快速广播</button>
-    </view>
-  </view>
-
-  <!-- Agent 谈判实时日志 -->
-  <block wx:if="{{negotiationLog.length > 0}}">
-    <view class="section-title">🧠 Agent 实时谈判过程</view>
-    <view class="card log-card">
-      <view wx:for="{{negotiationLog}}" wx:key="time" class="log-row log-{{item.type}}">
-        <text class="log-dot-text">{{item.type === 'deal' ? '✅' : item.type === 'agent' ? '🤖' : item.type === 'warn' ? '⚠️' : '•'}}</text>
-        <text class="log-text">{{item.text}}</text>
+  <!-- 顶部 -->
+  <view class="hero-bar">
+    <view class="hero-brand">
+      <text class="hero-logo">🦞</text>
+      <view>
+        <text class="hero-title">Project Claw</text>
+        <text class="hero-sub">AI 智能买手</text>
       </view>
     </view>
-  </block>
+    <view class="status-pill {{serverStatus === 'online' ? 'pill-online' : 'pill-offline'}}">
+      <view class="pill-dot"></view>
+      <text>{{serverStatus === 'online' ? '已连接' : '离线'}}</text>
+    </view>
+  </view>
 
-  <!-- 个性化画像面板 -->
+  <!-- 输入卡片 -->
+  <view class="search-card">
+    <view class="input-row">
+      <text class="input-icon">🛒</text>
+      <input class="main-input" placeholder="我想要…（如：龙虾、牛肉面）"
+        value="{{itemName}}" bindinput="onItemNameInput" maxlength="32" />
+    </view>
+    <view class="input-divider"></view>
+    <view class="input-row">
+      <text class="input-icon">💰</text>
+      <input class="main-input" placeholder="预算上限（元）"
+        value="{{expectedPrice}}" bindinput="onPriceInput" type="digit" maxlength="8" />
+    </view>
+
+    <!-- 主按钮 -->
+    <button class="btn-main" bindtap="onAutoNegotiate"
+      disabled="{{isLoading || autoNegotiating}}" loading="{{autoNegotiating}}">
+      🤖 Agent 全自动砍价
+    </button>
+    <view class="btn-row">
+      <button class="btn-sub" bindtap="onStartDialogue" disabled="{{isLoading}}">💬 手动谈判</button>
+      <button class="btn-sub btn-sub-blue" bindtap="onBroadcastIntent" disabled="{{isLoading}}">📡 快速广播</button>
+    </view>
+  </view>
+
+  <!-- Agent 谈判日志 -->
+  <view wx:if="{{negotiationLog.length > 0}}" class="log-card">
+    <view class="log-header"><text class="log-title">🧠 Agent 实时谈判过程</text></view>
+    <view wx:for="{{negotiationLog}}" wx:key="time" class="log-row">
+      <text class="log-badge log-{{item.type}}">{{item.type === 'deal' ? '✅' : item.type === 'warn' ? '⚠️' : '🤖'}}</text>
+      <text class="log-text">{{item.text}}</text>
+      <text class="log-time">{{item.time}}</text>
+    </view>
+  </view>
+
+  <!-- C端画像 -->
   <view class="card">
     <view class="panel-header" bindtap="onToggleProfile">
-      <text class="panel-title">⚙️ C端偏好（影响Agent谈判策略）</text>
+      <text class="panel-title">⚙️ 我的偏好（影响Agent谈判策略）</text>
       <text class="panel-arrow">{{showProfilePanel ? '▲' : '▼'}}</text>
     </view>
-    <block wx:if="{{showProfilePanel}}">
-      <view class="profile-row">
+    <block wx:if="{{showProfilePanel && profile}}">
+      <view class="profile-item">
         <text class="profile-label">预算下限 ¥{{profile.budget_min}}</text>
         <slider min="5" max="50" value="{{profile.budget_min}}" step="1"
           data-key="budget_min" bindchange="onProfileChange" activeColor="#e94560" />
       </view>
-      <view class="profile-row">
+      <view class="profile-item">
         <text class="profile-label">预算上限 ¥{{profile.budget_max}}</text>
         <slider min="10" max="200" value="{{profile.budget_max}}" step="1"
           data-key="budget_max" bindchange="onProfileChange" activeColor="#e94560" />
       </view>
-      <view class="profile-row">
+      <view class="profile-item">
         <text class="profile-label">价格敏感度 {{profile.price_sensitivity * 100}}%</text>
         <slider min="0" max="100" value="{{profile.price_sensitivity * 100}}" step="5"
           data-key="price_sensitivity" bindchange="onProfileChange" activeColor="#e94560" />
       </view>
-      <view class="profile-row">
+      <view class="profile-item">
         <text class="profile-label">时效要求 {{profile.time_urgency * 100}}%</text>
         <slider min="0" max="100" value="{{profile.time_urgency * 100}}" step="5"
           data-key="time_urgency" bindchange="onProfileChange" activeColor="#e94560" />
@@ -94,127 +81,29 @@
     </block>
   </view>
 
-  <!-- 广播结果 -->
-  <block wx:if="{{recentOffers.length > 0}}">
-    <view class="section-title">📦 商家报价</view>
-    <view wx:for="{{recentOffers}}" wx:key="merchant_id" class="card offer-card">
-      <view class="offer-header">
-        <text class="offer-merchant">{{item.merchant_id}}</text>
-        <text class="price"><text class="price-unit">¥</text>{{item.final_price}}</text>
+  <!-- 报价列表 -->
+  <view wx:if="{{recentOffers.length > 0}}">
+    <view class="section-title">📦 商家报价（{{recentOffers.length}}个）</view>
+    <view wx:for="{{recentOffers}}" wx:key="merchant_id" class="offer-card">
+      <view class="offer-top">
+        <view>
+          <text class="offer-merchant">🏪 {{item.merchant_id}}</text>
+          <text class="offer-desc">{{item.reply_text || '-'}}</text>
+        </view>
+        <text class="offer-price">¥{{item.final_price}}</text>
       </view>
-      <view class="offer-desc">{{item.reply_text || item.reason}}</view>
-      <view class="offer-meta">
+      <view class="offer-tags">
         <text class="tag">评分 {{item.match_score ? item.match_score.toFixed(1) : '-'}}</text>
         <text class="tag tag-blue">{{item.eta_minutes || 20}}分钟</text>
-        <text wx:for="{{item.offer_tags}}" wx:key="*this" class="tag tag-green">{{item}}</text>
+        <text wx:for="{{item.offer_tags}}" wx:key="*this" wx:for-item="tag" class="tag tag-green">{{tag}}</text>
       </view>
     </view>
-  </block>
+  </view>
 
   <!-- 空状态 -->
   <view wx:if="{{recentOffers.length === 0 && negotiationLog.length === 0 && !isLoading}}" class="empty-state">
     <text class="empty-icon">🦞</text>
-    <text class="empty-text">点击「Agent全自动砍价」\n让AI帮你谈最低价</text>
-  </view>
-
-</view>
-<view class="container">
-
-  <!-- 顶部状态栏 -->
-  <view class="header-bar">
-    <view class="header-title">Project Claw</view>
-    <view class="server-status">
-      <view class="status-dot {{serverStatus === 'online' ? 'online' : 'offline'}}"></view>
-      <text class="status-text">{{serverStatus === 'online' ? '已连接' : '离线'}}</text>
-    </view>
-  </view>
-
-  <!-- 搜索卡片 -->
-  <view class="card search-card">
-    <view class="card-label">我想要</view>
-    <input
-      class="search-input"
-      placeholder="输入商品名，如：牛肉面"
-      value="{{itemName}}"
-      bindinput="onItemNameInput"
-      maxlength="32"
-    />
-    <view class="card-label" style="margin-top:24rpx">预算（元）</view>
-    <input
-      class="search-input"
-      placeholder="输入最高预算，如：16"
-      value="{{expectedPrice}}"
-      bindinput="onPriceInput"
-      type="digit"
-      maxlength="8"
-    />
-
-    <view class="action-row">
-      <button
-        class="btn-primary btn-half"
-        bindtap="onStartDialogue"
-        disabled="{{isLoading}}"
-        loading="{{isLoading}}"
-      >🤖 智能谈判</button>
-      <button
-        class="btn-secondary btn-half"
-        bindtap="onBroadcastIntent"
-        disabled="{{isLoading}}"
-      >📡 快速广播</button>
-    </view>
-  </view>
-
-  <!-- 个性化画像面板 -->
-  <view class="card">
-    <view class="panel-header" bindtap="onToggleProfile">
-      <text class="panel-title">⚙️ 我的偏好设置</text>
-      <text class="panel-arrow">{{showProfilePanel ? '▲' : '▼'}}</text>
-    </view>
-    <block wx:if="{{showProfilePanel}}">
-      <view class="profile-row">
-        <text class="profile-label">预算下限 ¥{{profile.budget_min}}</text>
-        <slider min="5" max="50" value="{{profile.budget_min}}" step="1"
-          data-key="budget_min" bindchange="onProfileChange" activeColor="#e94560" />
-      </view>
-      <view class="profile-row">
-        <text class="profile-label">预算上限 ¥{{profile.budget_max}}</text>
-        <slider min="10" max="200" value="{{profile.budget_max}}" step="1"
-          data-key="budget_max" bindchange="onProfileChange" activeColor="#e94560" />
-      </view>
-      <view class="profile-row">
-        <text class="profile-label">价格敏感度 {{(profile.price_sensitivity * 100).toFixed(0)}}%</text>
-        <slider min="0" max="100" value="{{profile.price_sensitivity * 100}}" step="5"
-          data-key="price_sensitivity" bindchange="onProfileChange" activeColor="#e94560" />
-      </view>
-      <view class="profile-row">
-        <text class="profile-label">时效要求 {{(profile.time_urgency * 100).toFixed(0)}}%</text>
-        <slider min="0" max="100" value="{{profile.time_urgency * 100}}" step="5"
-          data-key="time_urgency" bindchange="onProfileChange" activeColor="#e94560" />
-      </view>
-    </block>
-  </view>
-
-  <!-- 广播结果 -->
-  <block wx:if="{{recentOffers.length > 0}}">
-    <view class="section-title">📦 商家报价</view>
-    <view wx:for="{{recentOffers}}" wx:key="merchant_id" class="card offer-card">
-      <view class="offer-header">
-        <text class="offer-merchant">{{item.merchant_id}}</text>
-        <text class="price"><text class="price-unit">¥</text>{{item.final_price}}</text>
-      </view>
-      <view class="offer-desc">{{item.reply_text}}</view>
-      <view class="offer-meta">
-        <text class="tag">评分 {{item.match_score.toFixed(1)}}</text>
-        <text class="tag tag-blue">{{item.eta_minutes}}分钟</text>
-        <text wx:for="{{item.offer_tags}}" wx:key="*this" class="tag tag-green">{{item}}</text>
-      </view>
-    </view>
-  </block>
-
-  <!-- 空状态 -->
-  <view wx:if="{{recentOffers.length === 0 && !isLoading}}" class="empty-state">
-    <text class="empty-icon">🦞</text>
-    <text class="empty-text">输入商品开始智能匹配</text>
+    <text class="empty-text">输入商品 + 预算\n让 AI 帮你砍最低价</text>
   </view>
 
 </view>
