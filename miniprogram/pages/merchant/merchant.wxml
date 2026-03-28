@@ -1,143 +1,239 @@
-<!-- pages/merchant/merchant.wxml v3.0 -->
+<!-- pages/merchant/merchant.wxml v5.0 工业级B端控制台 -->
+<view class="page-bg">
 <view class="container">
 
-  <!-- 顶部商家卡片 -->
+  <!-- ══ 顶部英雄卡片 ══ -->
   <view class="merchant-hero">
     <view class="hero-left">
       <view class="avatar">🏪</view>
       <view class="hero-info">
         <text class="hero-name">{{profile.name || '我的店铺'}}</text>
-        <view class="hero-id" bindtap="onCopyId" data-id="{{merchantId}}">
-          <text class="id-text">{{merchantId}}</text>
-          <text class="id-copy">复制</text>
+        <view class="hero-id">
+          <text class="id-text">ID: {{merchantId}}</text>
+          <view class="id-copy" bindtap="onCopyId" data-id="{{merchantId}}">复制</view>
         </view>
       </view>
     </view>
-    <view class="hero-right">
-      <view class="status-pill {{isOnline ? 'online' : 'offline'}}">
-        <view class="status-dot"></view>
-        <text>{{isOnline ? 'Agent在线' : '未连接'}}</text>
-      </view>
+    <view class="status-pill {{agentRunning ? 'online' : 'offline'}}">
+      <view class="status-dot"></view>
+      <text>{{agentRunning ? '● 运行中' : '○ 离线'}}</text>
     </view>
   </view>
 
-  <!-- 实时数据罗盘 -->
+  <!-- ══ 实时统计 ══ -->
   <view class="stats-row">
     <view class="stat-box">
-      <text class="stat-val green">{{stats.online_merchants || 0}}</text>
-      <text class="stat-label">在线商家</text>
+      <text class="stat-val green">{{totalIntents || 0}}</text>
+      <text class="stat-label">今日意图</text>
     </view>
     <view class="stat-box">
-      <text class="stat-val blue">{{totalNegotiations}}</text>
-      <text class="stat-label">谈判次数</text>
+      <text class="stat-val blue">{{totalOffers || 0}}</text>
+      <text class="stat-label">已报价</text>
     </view>
     <view class="stat-box">
-      <text class="stat-val red">{{successRate}}%</text>
-      <text class="stat-label">成交率</text>
+      <text class="stat-val red">¥{{totalRevenue || 0}}</text>
+      <text class="stat-label">今日收入</text>
     </view>
   </view>
 
-  <!-- Agent 运行状态卡片 -->
-  <view class="card agent-status-card">
+  <!-- ══ Agent 状态卡片 ══ -->
+  <view class="agent-status-card">
     <view class="agent-status-header">
-      <text class="agent-status-title">🤖 B端Agent状态</text>
+      <text class="agent-status-title">🤖 Agent 实时状态</text>
       <view class="agent-status-badge {{agentRunning ? 'badge-running' : 'badge-stopped'}}">
         <view class="badge-dot"></view>
-        <text>{{agentRunning ? '运行中' : '未启动'}}</text>
+        <text>{{agentRunning ? '运行中' : '已停止'}}</text>
       </view>
+    </view>
+    <view class="agent-info-row">
+      <text class="agent-info-label">连接状态</text>
+      <text class="agent-info-val {{wsConnected ? 'green' : 'red'}}">
+        {{wsConnected ? '✓ 已连接' : '✗ 未连接'}}
+      </text>
     </view>
     <view class="agent-info-row">
       <text class="agent-info-label">信令服务器</text>
-      <text class="agent-info-val">{{signalingUrl}}</text>
+      <text class="agent-info-val blue">{{signalingUrl}}</text>
     </view>
     <view class="agent-info-row">
-      <text class="agent-info-label">待处理意图</text>
-      <text class="agent-info-val blue">{{stats.pending_intents || 0}}</text>
+      <text class="agent-info-label">当前谈判轮数</text>
+      <text class="agent-info-val">{{currentNegotiationRound || 0}}</text>
     </view>
     <view class="agent-info-row">
-      <text class="agent-info-label">累计收益</text>
-      <text class="agent-info-val green">¥{{totalRevenue.toFixed(2)}}</text>
+      <text class="agent-info-label">平均成交价</text>
+      <text class="agent-info-val green">¥{{avgDealPrice || '-'}}</text>
     </view>
-    <button class="refresh-btn-full" bindtap="onRefreshStats">↻ 刷新状态</button>
   </view>
 
-  <!-- B端Agent策略设置 -->
-  <view class="section-title">🧠 B端Agent谈判策略</view>
-  <view class="card">
-    <view class="profile-row">
-      <text class="profile-label">底价 ¥{{profile.bottom_price}}</text>
-      <slider min="5" max="100" value="{{profile.bottom_price}}" step="0.5"
-        data-key="bottom_price" bindchange="onSliderChange" activeColor="#e94560" />
+  <!-- ══ 实时意图监听 ══ -->
+  <view class="section-title">📡 实时意图监听</view>
+  <view class="intent-monitor">
+    <view wx:if="{{currentIntent}}" class="intent-card">
+      <view class="intent-header">
+        <text class="intent-item">{{currentIntent.item_name}}</text>
+        <text class="intent-price">¥{{currentIntent.expected_price}}</text>
+      </view>
+      <view class="intent-meta">
+        <text class="meta-tag">客户ID: {{currentIntent.client_id}}</text>
+        <text class="meta-tag">预算: ¥{{currentIntent.expected_price}}</text>
+        <text class="meta-tag">距离: {{currentIntent.max_distance_km}}km</text>
+      </view>
+      <view class="intent-actions">
+        <button class="btn-action btn-accept" bindtap="onAcceptIntent">
+          ✓ 接受意图
+        </button>
+        <button class="btn-action btn-decline" bindtap="onDeclineIntent">
+          ✗ 拒绝
+        </button>
+      </view>
     </view>
-    <view class="profile-row">
-      <text class="profile-label">正常售价 ¥{{profile.normal_price}}</text>
-      <slider min="5" max="200" value="{{profile.normal_price}}" step="0.5"
-        data-key="normal_price" bindchange="onSliderChange" activeColor="#e94560" />
+    <view wx:else class="empty-monitor">
+      <text class="empty-text">等待客户意图...</text>
     </view>
-    <view class="profile-row">
-      <text class="profile-label">最大折扣 {{profile.max_discount_rate * 100}}%</text>
-      <slider min="0" max="30" value="{{profile.max_discount_rate * 100}}" step="1"
-        data-key="max_discount_rate" bindchange="onSliderChange" activeColor="#e94560" />
-    </view>
-    <view class="profile-row">
-      <text class="profile-label">配送时效 {{profile.delivery_time_minutes}}分钟</text>
-      <slider min="5" max="60" value="{{profile.delivery_time_minutes}}" step="1"
-        data-key="delivery_time_minutes" bindchange="onSliderChange" activeColor="#e94560" />
-    </view>
-    <view class="profile-row">
-      <text class="profile-label">品质评分 {{(profile.quality_score * 100) | 0}}%</text>
-      <slider min="0" max="100" value="{{profile.quality_score * 100}}" step="1"
-        data-key="quality_score" bindchange="onSliderChange" activeColor="#e94560" />
-    </view>
-    <view class="toggle-row">
-      <text class="toggle-label">营业状态</text>
-      <switch checked="{{profile.is_open}}" bindchange="onToggleOpen" color="#30d158" />
-    </view>
-    <button class="save-btn" bindtap="onSaveProfile" loading="{{isLoading}}">
-      💾 同步到云端Agent
-    </button>
   </view>
 
-  <!-- 商家ID管理 -->
-  <view class="section-title">⚙️ 节点配置</view>
+  <!-- ══ 实时对话面板 ══ -->
+  <view class="section-title">💬 实时对话</view>
+  <view class="dialogue-panel">
+    <view wx:if="{{currentDialogue}}" class="dialogue-card">
+      <view class="dialogue-header">
+        <text class="dialogue-title">与 {{currentDialogue.client_id}} 的对话</text>
+        <text class="dialogue-round">第 {{currentDialogue.round}} 轮</text>
+      </view>
+      
+      <!-- 对话历史 -->
+      <view class="dialogue-history">
+        <view wx:for="{{currentDialogue.turns}}" wx:key="turn_id"
+          class="turn {{item.sender_role === 'CLIENT' ? 'turn-client' : 'turn-merchant'}}">
+          <view class="turn-avatar">
+            {{item.sender_role === 'CLIENT' ? '👤' : '🏪'}}
+          </view>
+          <view class="turn-content">
+            <text class="turn-text">{{item.text}}</text>
+            <view wx:if="{{item.offered_price}}" class="turn-price">
+              报价: ¥{{item.offered_price}}
+            </view>
+            <text class="turn-time">{{formatTime(item.timestamp)}}</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 输入区 -->
+      <view class="dialogue-input">
+        <input class="input-text" placeholder="输入回复..."
+          value="{{replyText}}" bindinput="onReplyInput" />
+        <input class="input-price" placeholder="报价"
+          value="{{replyPrice}}" bindinput="onPriceInput" type="digit" />
+        <button class="btn-send" bindtap="onSendReply">发送</button>
+      </view>
+    </view>
+    <view wx:else class="empty-dialogue">
+      <text class="empty-text">暂无对话</text>
+    </view>
+  </view>
+
+  <!-- ══ 谈判策略配置 ══ -->
+  <view class="section-title">⚙️ 谈判策略</view>
   <view class="card">
     <view class="config-row">
-      <text class="config-label">商家节点ID</text>
+      <text class="config-label">底价 (¥)</text>
       <view class="config-val-wrap">
-        <text class="config-val">{{merchantId}}</text>
-        <view class="config-edit-btn" bindtap="onChangeMerchantId">修改</view>
+        <text class="config-val">{{profile.bottom_price || 10}}</text>
+        <view class="config-edit-btn" bindtap="onEditBottomPrice">编辑</view>
       </view>
     </view>
     <view class="config-row">
-      <text class="config-label">Agent连接状态</text>
-      <text class="config-val {{wsStatus === 'connected' ? 'green' : 'red'}}">
-        {{wsStatus === 'connected' ? '✅ 已连接' : '❌ 未连接'}}
-      </text>
+      <text class="config-label">正常价 (¥)</text>
+      <view class="config-val-wrap">
+        <text class="config-val">{{profile.normal_price || 18}}</text>
+        <view class="config-edit-btn" bindtap="onEditNormalPrice">编辑</view>
+      </view>
+    </view>
+    <view class="config-row">
+      <text class="config-label">最大折扣</text>
+      <view class="config-val-wrap">
+        <text class="config-val">{{(profile.max_discount_rate * 100 || 15)}}%</text>
+        <view class="config-edit-btn" bindtap="onEditDiscount">编辑</view>
+      </view>
+    </view>
+    <view class="config-row">
+      <text class="config-label">配送时间</text>
+      <view class="config-val-wrap">
+        <text class="config-val">{{profile.delivery_time_minutes || 20}} 分钟</text>
+        <view class="config-edit-btn" bindtap="onEditDeliveryTime">编辑</view>
+      </view>
+    </view>
+    <view class="config-row">
+      <text class="config-label">店铺状态</text>
+      <view class="config-val-wrap">
+        <text class="config-val {{profile.is_open ? 'green' : 'red'}}">
+          {{profile.is_open ? '营业中' : '已关闭'}}
+        </text>
+        <view class="config-edit-btn" bindtap="onToggleOpen">
+          {{profile.is_open ? '关闭' : '开启'}}
+        </view>
+      </view>
     </view>
   </view>
 
-  <!-- 启动说明 -->
-  <view class="section-title">📡 B端Agent启动方式</view>
-  <view class="card tip-card">
+  <!-- ══ 启动步骤说明 ══ -->
+  <view class="section-title">🚀 启动步骤</view>
+  <view class="tip-card">
     <view class="tip-step">
-      <text class="tip-step-num">1</text>
-      <text class="tip-step-text">确保云端信令服务已启动\npython run_stack.py signaling</text>
+      <view class="tip-step-num">1</view>
+      <view class="tip-step-text">
+        <text>启动后端服务</text>
+        <view class="tip-note">
+          <text class="tip-note-text">python run_stack.py signaling siri dashboard</text>
+        </view>
+      </view>
     </view>
     <view class="tip-step">
-      <text class="tip-step-num">2</text>
-      <text class="tip-step-text">在本地 PowerShell 运行：\n.\start_edge.ps1</text>
+      <view class="tip-step-num">2</view>
+      <view class="tip-step-text">
+        <text>启动 B端 Agent</text>
+        <view class="tip-note">
+          <text class="tip-note-text">.\start_edge.ps1</text>
+        </view>
+      </view>
     </view>
     <view class="tip-step">
-      <text class="tip-step-num">3</text>
-      <text class="tip-step-text">或直接运行 Python：\npython edge_box/ws_listener.py</text>
+      <view class="tip-step-num">3</view>
+      <view class="tip-step-text">
+        <text>打开小程序</text>
+        <view class="tip-note">
+          <text class="tip-note-text">微信开发者工具 → 导入 miniprogram</text>
+        </view>
+      </view>
     </view>
     <view class="tip-step">
-      <text class="tip-step-num">4</text>
-      <text class="tip-step-text">Agent自动连接信令服务器\n接收C端砍价请求并自动报价</text>
-    </view>
-    <view class="tip-note">
-      <text class="tip-note-text">💡 无Android设备时自动使用MockDriver，所有操作记录日志但不执行物理动作</text>
+      <view class="tip-step-num">4</view>
+      <view class="tip-step-text">
+        <text>验证连接</text>
+        <view class="tip-note">
+          <text class="tip-note-text">小程序顶部显示「● 在线 1 商家」</text>
+        </view>
+      </view>
     </view>
   </view>
 
-</view>
+  <!-- ══ 历史订单 ══ -->
+  <view class="section-title">📋 今日订单</view>
+  <view class="orders-list">
+    <view wx:for="{{todayOrders}}" wx:key="trade_id" class="order-item">
+      <view class="order-header">
+        <text class="order-item-name">{{item.item_name}}</text>
+        <text class="order-price">¥{{item.final_price}}</text>
+      </view>
+      <view class="order-meta">
+        <text class="meta-tag">{{item.client_id}}</text>
+        <text class="meta-tag">{{formatTime(item.created_at)}}</text>
+      </view>
+    </view>
+    <view wx:if="{{!todayOrders || todayOrders.length === 0}}" class="empty-orders">
+      <text>暂无订单</text>
+    </view>
+  </view>
+
+</view><!-- /container -->
+</view><!-- /page-bg -->
