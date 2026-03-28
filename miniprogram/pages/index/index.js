@@ -45,7 +45,7 @@ Page({
   },
   onPriceInput(e)   { this.setData({ expectedPrice: e.detail.value }); },
   onToggleProfile() { this.setData({ showProfilePanel: !this.data.showProfilePanel }); },
-  onToggleHistory() { this.setData({ showHistory: !this.data.showHistory }); },
+  onClearItem() { this.setData({ itemName: '', showHistory: true }); },
 
   onSelectHistory(e) {
     const item = e.currentTarget.dataset.item;

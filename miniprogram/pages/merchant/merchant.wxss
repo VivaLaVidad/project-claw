@@ -1,62 +1,121 @@
-/* pages/merchant/merchant.wxss */
-.merchant-hero{background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:24rpx;padding:32rpx;display:flex;justify-content:space-between;align-items:center;margin-bottom:24rpx}
-.hero-left{display:flex;align-items:center;gap:24rpx}
-.avatar{font-size:72rpx;background:rgba(255,255,255,.1);width:96rpx;height:96rpx;border-radius:50%;display:flex;align-items:center;justify-content:center}
-.hero-info{}
-.hero-name{font-size:32rpx;font-weight:700;color:#fff;display:block;margin-bottom:8rpx}
-.hero-id{display:flex;align-items:center;gap:12rpx}
-.id-text{font-size:22rpx;color:rgba(255,255,255,.5)}
-.id-copy{font-size:20rpx;color:#e94560;border:1rpx solid rgba(233,69,96,.4);border-radius:6rpx;padding:2rpx 8rpx}
-.status-pill{display:flex;align-items:center;gap:8rpx;border-radius:20rpx;padding:10rpx 20rpx;font-size:22rpx}
-.status-pill.online{background:rgba(48,209,88,.15);color:#30d158}
-.status-pill.offline{background:rgba(255,59,92,.15);color:#ff3b5c}
-.status-dot{width:12rpx;height:12rpx;border-radius:50%;background:currentColor}
-.stats-row{display:flex;gap:16rpx;margin-bottom:28rpx}
-.stat-box{flex:1;background:#fff;border-radius:16rpx;padding:24rpx;text-align:center;box-shadow:0 2rpx 12rpx rgba(0,0,0,.06)}
-.stat-val{font-size:48rpx;font-weight:800;display:block;line-height:1.2}
-.stat-val.green{color:#30d158}
-.stat-val.blue{color:#0a84ff}
-.stat-val.red{color:#e94560}
-.stat-label{font-size:22rpx;color:#aaa;margin-top:8rpx;display:block}
-.section-title{font-size:28rpx;font-weight:700;color:#1a1a2e;margin-bottom:16rpx}
-.profile-row{margin-bottom:20rpx}
-.profile-label{font-size:24rpx;color:#555;display:block;margin-bottom:8rpx}
-.toggle-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:20rpx}
-.toggle-label{font-size:28rpx;color:#333;font-weight:500}
-.save-btn{background:linear-gradient(135deg,#e94560,#c73652);color:#fff;border:none;border-radius:16rpx;padding:24rpx 0;font-size:28rpx;font-weight:600;margin-top:8rpx}
-.save-btn::after{border:none}
-.config-row{display:flex;justify-content:space-between;align-items:center;padding:16rpx 0;border-bottom:1rpx solid #f5f5f5}
-.config-row:last-child{border-bottom:none}
-.config-label{font-size:26rpx;color:#666}
-.config-val-wrap{display:flex;align-items:center;gap:12rpx}
-.config-val{font-size:26rpx;color:#333}
-.config-val.green{color:#30d158}
-.config-val.red{color:#ff3b5c}
-.config-edit-btn{font-size:22rpx;color:#e94560;border:1rpx solid rgba(233,69,96,.4);border-radius:8rpx;padding:4rpx 12rpx}
-.refresh-btn-full{background:#f5f5f5;color:#666;border:none;border-radius:12rpx;padding:20rpx 0;font-size:26rpx;margin-top:16rpx}
-.refresh-btn-full::after{border:none}
-.tip-card{background:#fffbf0;border:1rpx solid #ffe58f}
-.tip-title{font-size:26rpx;font-weight:600;color:#8a6d00;display:block;margin-bottom:16rpx}
-.tip-text{font-size:22rpx;color:#a87c00;line-height:1.8;display:block}
+/* pages/merchant/merchant.wxss v4.0 深色工业风 */
 
-/* ── B端Agent状态卡片 ── */
-.agent-status-card{background:#fff;border-radius:20rpx;padding:28rpx;margin-bottom:20rpx}
-.agent-status-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20rpx}
-.agent-status-title{font-size:28rpx;font-weight:700;color:#1a1a2e}
-.agent-status-badge{display:flex;align-items:center;gap:8rpx;border-radius:20rpx;padding:8rpx 18rpx;font-size:22rpx}
-.badge-running{background:rgba(48,209,88,.12);color:#30d158}
-.badge-stopped{background:rgba(255,59,92,.12);color:#ff3b5c}
-.badge-dot{width:10rpx;height:10rpx;border-radius:50%;background:currentColor}
-.agent-info-row{display:flex;justify-content:space-between;align-items:center;padding:12rpx 0;border-bottom:1rpx solid #f5f5f5}
-.agent-info-row:last-child{border-bottom:none}
-.agent-info-label{font-size:24rpx;color:#aaa}
-.agent-info-val{font-size:24rpx;color:#333;max-width:60%;text-align:right;word-break:break-all}
-.agent-info-val.blue{color:#0a84ff}
-.agent-info-val.green{color:#30d158}
+/* ── 顶部英雄卡片 ── */
+.merchant-hero {
+  background: linear-gradient(135deg, rgba(233,69,96,.15) 0%, rgba(15,12,41,0) 100%);
+  border: 1rpx solid rgba(233,69,96,.2);
+  border-radius: 28rpx; padding: 36rpx; margin-bottom: 28rpx;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.hero-left { display: flex; align-items: center; gap: 24rpx; }
+.avatar {
+  font-size: 64rpx;
+  background: rgba(233,69,96,.1);
+  border: 1rpx solid rgba(233,69,96,.2);
+  width: 96rpx; height: 96rpx; border-radius: 24rpx;
+  display: flex; align-items: center; justify-content: center;
+}
+.hero-name { font-size: 32rpx; font-weight: 700; color: #fff; display: block; margin-bottom: 8rpx; }
+.hero-id { display: flex; align-items: center; gap: 12rpx; }
+.id-text { font-size: 22rpx; color: rgba(255,255,255,.4); }
+.id-copy { font-size: 18rpx; color: #e94560; border: 1rpx solid rgba(233,69,96,.3); border-radius: 6rpx; padding: 2rpx 8rpx; }
+.status-pill { display: flex; align-items: center; gap: 8rpx; border-radius: 20rpx; padding: 12rpx 20rpx; font-size: 22rpx; font-weight: 600; }
+.status-pill.online  { background: rgba(48,209,88,.1);  color: #30d158; border: 1rpx solid rgba(48,209,88,.2); }
+.status-pill.offline { background: rgba(255,59,92,.1);  color: #ff3b5c; border: 1rpx solid rgba(255,59,92,.2); }
+.status-dot { width: 10rpx; height: 10rpx; border-radius: 50%; background: currentColor; }
 
-/* ── 启动步骤说明 ── */
-.tip-step{display:flex;align-items:flex-start;gap:16rpx;margin-bottom:20rpx}
-.tip-step-num{width:40rpx;height:40rpx;border-radius:50%;background:#e94560;color:#fff;font-size:22rpx;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.tip-step-text{font-size:24rpx;color:#555;line-height:1.8;flex:1}
-.tip-note{background:#f0f8ff;border-radius:12rpx;padding:16rpx;margin-top:8rpx}
-.tip-note-text{font-size:22rpx;color:#1565c0;line-height:1.7}
+/* ── 统计行 ── */
+.stats-row { display: flex; gap: 16rpx; margin-bottom: 28rpx; }
+.stat-box {
+  flex: 1; background: rgba(255,255,255,.04);
+  border: 1rpx solid rgba(255,255,255,.06);
+  border-radius: 20rpx; padding: 24rpx; text-align: center;
+}
+.stat-val { font-size: 44rpx; font-weight: 900; display: block; line-height: 1.2; color: #fff; }
+.stat-val.green { color: #30d158; }
+.stat-val.blue  { color: #5ba3f5; }
+.stat-val.red   { color: #e94560; }
+.stat-label { font-size: 20rpx; color: rgba(255,255,255,.3); margin-top: 8rpx; display: block; }
+
+/* ── 节标题 ── */
+.section-title { font-size: 26rpx; font-weight: 700; color: rgba(255,255,255,.5); margin-bottom: 16rpx; letter-spacing: 2rpx; text-transform: uppercase; }
+
+/* ── 通用卡片（覆盖全局）── */
+.card {
+  background: rgba(255,255,255,.04);
+  border: 1rpx solid rgba(255,255,255,.06);
+  border-radius: 20rpx; padding: 32rpx; margin-bottom: 20rpx;
+}
+
+/* ── 策略滑块 ── */
+.profile-row { margin-bottom: 20rpx; }
+.profile-label { font-size: 24rpx; color: rgba(255,255,255,.55); display: block; margin-bottom: 8rpx; }
+.toggle-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20rpx; }
+.toggle-label { font-size: 28rpx; color: rgba(255,255,255,.75); font-weight: 500; }
+.save-btn {
+  background: linear-gradient(135deg, #e94560, #c73652);
+  color: #fff; border: none; border-radius: 16rpx;
+  padding: 24rpx 0; font-size: 28rpx; font-weight: 600; margin-top: 8rpx;
+  box-shadow: 0 6rpx 24rpx rgba(233,69,96,.35);
+}
+.save-btn::after { border: none; }
+
+/* ── 配置行 ── */
+.config-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 18rpx 0; border-bottom: 1rpx solid rgba(255,255,255,.05);
+}
+.config-row:last-child { border-bottom: none; }
+.config-label { font-size: 26rpx; color: rgba(255,255,255,.45); }
+.config-val-wrap { display: flex; align-items: center; gap: 12rpx; }
+.config-val { font-size: 26rpx; color: rgba(255,255,255,.75); }
+.config-val.green { color: #30d158; }
+.config-val.red   { color: #ff3b5c; }
+.config-edit-btn { font-size: 20rpx; color: #e94560; border: 1rpx solid rgba(233,69,96,.3); border-radius: 8rpx; padding: 4rpx 12rpx; }
+.refresh-btn-full {
+  background: rgba(255,255,255,.05);
+  border: 1rpx solid rgba(255,255,255,.08);
+  color: rgba(255,255,255,.5); border-radius: 12rpx;
+  padding: 20rpx 0; font-size: 26rpx; margin-top: 16rpx;
+}
+.refresh-btn-full::after { border: none; }
+
+/* ── Agent 状态卡片 ── */
+.agent-status-card {
+  background: rgba(91,163,245,.04);
+  border: 1rpx solid rgba(91,163,245,.15);
+  border-radius: 20rpx; padding: 28rpx; margin-bottom: 20rpx;
+}
+.agent-status-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20rpx; }
+.agent-status-title { font-size: 28rpx; font-weight: 700; color: #fff; }
+.agent-status-badge { display: flex; align-items: center; gap: 8rpx; border-radius: 20rpx; padding: 8rpx 18rpx; font-size: 20rpx; font-weight: 600; }
+.badge-running { background: rgba(48,209,88,.1); color: #30d158; border: 1rpx solid rgba(48,209,88,.2); }
+.badge-stopped { background: rgba(255,59,92,.1); color: #ff3b5c; border: 1rpx solid rgba(255,59,92,.2); }
+.badge-dot { width: 8rpx; height: 8rpx; border-radius: 50%; background: currentColor; }
+.agent-info-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14rpx 0; border-bottom: 1rpx solid rgba(255,255,255,.04);
+}
+.agent-info-row:last-child { border-bottom: none; }
+.agent-info-label { font-size: 22rpx; color: rgba(255,255,255,.3); }
+.agent-info-val { font-size: 22rpx; color: rgba(255,255,255,.65); max-width: 60%; text-align: right; word-break: break-all; }
+.agent-info-val.blue  { color: #5ba3f5; }
+.agent-info-val.green { color: #30d158; }
+
+/* ── 启动步骤 ── */
+.tip-card {
+  background: rgba(255,204,0,.03);
+  border: 1rpx solid rgba(255,204,0,.1);
+  border-radius: 20rpx; padding: 32rpx; margin-bottom: 20rpx;
+}
+.tip-step { display: flex; align-items: flex-start; gap: 20rpx; margin-bottom: 24rpx; }
+.tip-step:last-child { margin-bottom: 0; }
+.tip-step-num {
+  width: 44rpx; height: 44rpx; border-radius: 50%;
+  background: linear-gradient(135deg, #e94560, #c73652);
+  color: #fff; font-size: 22rpx; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.tip-step-text { font-size: 24rpx; color: rgba(255,255,255,.55); line-height: 1.8; flex: 1; }
+.tip-note { background: rgba(91,163,245,.05); border: 1rpx solid rgba(91,163,245,.1); border-radius: 12rpx; padding: 16rpx; margin-top: 8rpx; }
+.tip-note-text { font-size: 22rpx; color: #5ba3f5; line-height: 1.7; }
