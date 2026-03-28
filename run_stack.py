@@ -3,10 +3,10 @@ run_stack.py - Project Claw v14.3
 工业级进程编排启动脚本
 
 改进：
-- 修复引用已删除 demo_dashboard.py 的 bug
-- 加健康检查等待（等 signaling 就绪后再启 siri）
-- 自动重启崩溃子进程（可配置）
-- 详细的启动/退出日志
+- 启动前自动清理占用端口
+- 健康检查等待 signaling 就绪
+- 自动重启崩溃子进程
+- 详细启动/退出日志
 """
 from __future__ import annotations
 
@@ -46,14 +46,34 @@ SERVICES: dict[str, list[str]] = {
     ],
 }
 
-# 需要在 signaling 就绪后才启动的服务
-_DEPENDS_ON_SIGNALING = {"siri", "dashboard"}
+# 服务对应的端口（用于启动前清理）
+_SERVICE_PORTS = {"signaling": 8765, "siri": 8010}
 
 
-# ─── 工具函数 ──────────────────────────────────────────────────
+# ─── 工具函数 ─────────────────────────────────────────────────
 def _log(msg: str) -> None:
     ts = time.strftime("%H:%M:%S")
     print(f"[stack {ts}] {msg}", flush=True)
+
+
+def _kill_port(port: int) -> None:
+    """强制释放端口，防止上次进程残留导致 bind 失败。"""
+    try:
+        result = subprocess.run(
+            f"netstat -ano | findstr :{port} ",
+            shell=True, capture_output=True, text=True,
+        )
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 5 and "LISTENING" in parts:
+                pid = parts[-1]
+                subprocess.run(
+                    f"taskkill /F /PID {pid}",
+                    shell=True, capture_output=True,
+                )
+                _log(f"已释放端口 {port} (PID={pid})")
+    except Exception:
+        pass
 
 
 def _wait_signaling_ready(timeout: int = 30) -> bool:
@@ -74,7 +94,7 @@ def _wait_signaling_ready(timeout: int = 30) -> bool:
     return False
 
 
-def start_service(name: str) -> "subprocess.Popen[str]":
+def start_service(name: str) -> subprocess.Popen:
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")
     cmd = SERVICES[name]
@@ -82,7 +102,7 @@ def start_service(name: str) -> "subprocess.Popen[str]":
     return subprocess.Popen(cmd, cwd=str(ROOT), env=env, text=True)
 
 
-def terminate_all(processes: dict[str, "subprocess.Popen[str]"]) -> None:
+def terminate_all(processes: dict[str, subprocess.Popen]) -> None:
     for name, proc in processes.items():
         if proc.poll() is None:
             _log(f"停止 {name} (pid={proc.pid})")
@@ -104,11 +124,11 @@ def main() -> int:
         choices=sorted(SERVICES.keys()),
         help="指定要启动的服务（默认: signaling siri）",
     )
-    parser.add_argument("--no-restart", action="store_true", help="子进程崩溃后不自动重启")
+    parser.add_argument("--no-restart", action="store_true", help="崩溃后不自动重启")
     args = parser.parse_args()
 
     selected = args.services or ["signaling", "siri"]
-    processes: dict[str, subprocess.Popen[str]] = {}
+    processes: dict[str, subprocess.Popen] = {}
 
     def _shutdown(*_: object) -> None:
         _log("收到退出信号，正在停止所有服务...")
@@ -120,12 +140,19 @@ def main() -> int:
         signal.signal(signal.SIGTERM, _shutdown)
 
     try:
-        # 先启动 signaling
+        # ── 启动前清理占用端口 ──
+        for svc in selected:
+            port = _SERVICE_PORTS.get(svc)
+            if port:
+                _kill_port(port)
+        time.sleep(1)  # 等待端口完全释放
+
+        # ── 先启动 signaling ──
         if "signaling" in selected:
             processes["signaling"] = start_service("signaling")
             _wait_signaling_ready(timeout=30)
 
-        # 再启动其余服务
+        # ── 再启动其余服务 ──
         for name in selected:
             if name == "signaling":
                 continue
@@ -133,7 +160,7 @@ def main() -> int:
 
         _log(f"全部服务已启动: {list(processes.keys())}，按 Ctrl+C 停止")
 
-        # 监控循环
+        # ── 监控循环 ──
         while True:
             for name in list(processes.keys()):
                 proc = processes[name]
@@ -144,6 +171,9 @@ def main() -> int:
                         terminate_all(processes)
                         return code
                     else:
+                        port = _SERVICE_PORTS.get(name)
+                        if port:
+                            _kill_port(port)
                         _log(f"自动重启 {name}...")
                         time.sleep(2)
                         processes[name] = start_service(name)
