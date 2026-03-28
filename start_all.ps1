@@ -1,5 +1,6 @@
-# start_all.ps1 - Project Claw 一键启动脚本 v1.0
+# start_all.ps1 - Project Claw 一键启动脚本 v1.1
 # 启动所有服务：signaling + siri + edge_box + 微信开发者工具
+# 修复：使用 $process_pid 替代系统保留变量 $pid
 
 param(
     [switch]$NoWechat  # 不启动微信开发者工具
@@ -9,7 +10,7 @@ $ROOT = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PYTHON = 'D:\Python1\python.exe'
 
 Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║         Project Claw 一键启动 v1.0                        ║" -ForegroundColor Cyan
+Write-Host "║         Project Claw 一键启动 v1.1                        ║" -ForegroundColor Cyan
 Write-Host "║  启动服务：signaling + siri + edge_box + 微信开发者工具   ║" -ForegroundColor Cyan
 Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
@@ -31,9 +32,9 @@ $ports = @(8765, 8010)
 foreach ($port in $ports) {
     $result = netstat -ano | Select-String ":$port " | Select-Object -First 1
     if ($result) {
-        $pid = $result -split '\s+' | Select-Object -Last 1
-        taskkill /F /PID $pid 2>$null | Out-Null
-        Write-Host "  ✓ 已释放端口 $port (PID=$pid)" -ForegroundColor Green
+        $process_pid = $result -split '\s+' | Select-Object -Last 1
+        taskkill /F /PID $process_pid 2>$null | Out-Null
+        Write-Host "  ✓ 已释放端口 $port (PID=$process_pid)" -ForegroundColor Green
     }
 }
 Start-Sleep -Seconds 1
