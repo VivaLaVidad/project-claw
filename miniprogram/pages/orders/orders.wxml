@@ -1,33 +1,50 @@
-<!-- pages/orders/orders.wxml -->
+<!-- pages/orders/orders.wxml v3.0 -->
 <view class="container">
 
   <!-- 顶部 -->
   <view class="page-header">
     <text class="page-title">📋 我的订单</text>
     <view class="header-right">
-      <view wx:if="{{!isOnline}}" class="offline-badge">离线</view>
+      <view wx:if="{{!isOnline}}" class="offline-badge">离线缓存</view>
       <view class="refresh-btn" bindtap="onRefresh">↻</view>
+    </view>
+  </view>
+
+  <!-- 统计数据 -->
+  <view class="stats-row">
+    <view class="stat-box">
+      <text class="stat-val">{{totalCount}}</text>
+      <text class="stat-label">总订单</text>
+    </view>
+    <view class="stat-box">
+      <text class="stat-val green">{{executedCount}}</text>
+      <text class="stat-label">成交</text>
+    </view>
+    <view class="stat-box">
+      <text class="stat-val blue">¥{{totalSpend.toFixed(1)}}</text>
+      <text class="stat-label">累计消费</text>
     </view>
   </view>
 
   <!-- 状态筛选 -->
   <scroll-view scroll-x class="filter-bar">
-    <view wx:for="{{[['all','全部'],['broadcasted','广播中'],['executed','已成交'],['failed','失败']]}}" wx:key="*this"
-      class="filter-chip {{filterStatus === item[0] ? 'chip-active' : ''}}"
-      bindtap="onFilterChange" data-status="{{item[0]}}">{{item[1]}}
+    <view wx:for="{{[['all','全部'],['broadcasted','广播中'],['offered','报价中'],['executed','已成交'],['failed','失败']]}}"
+      wx:key="*this" wx:for-item="chip"
+      class="filter-chip {{filterStatus === chip[0] ? 'chip-active' : ''}}"
+      bindtap="onFilterChange" data-status="{{chip[0]}}">{{chip[1]}}
     </view>
   </scroll-view>
 
   <!-- 加载态 -->
   <view wx:if="{{isLoading && filteredOrders.length === 0}}" class="loading-wrap">
     <view class="spinner"></view>
-    <text style="color:#888;font-size:26rpx">加载中...</text>
+    <text class="loading-text">加载中...</text>
   </view>
 
   <!-- 空状态 -->
   <view wx:elif="{{filteredOrders.length === 0}}" class="empty-state">
     <text class="empty-icon">📭</text>
-    <text class="empty-text">暂无{{filterStatus === 'all' ? '' : '该状态'}}订单</text>
+    <text class="empty-text">暂无{{filterStatus === 'all' ? '' : '该状态的'}}订单</text>
   </view>
 
   <!-- 订单列表 -->
@@ -38,20 +55,32 @@
       <!-- 订单头 -->
       <view class="order-header">
         <view class="order-demand">{{item.demand_text || '未知需求'}}</view>
-        <view class="badge badge-{{item.status}}">{{item.status === 'executed' ? '✅ 成交' : item.status === 'failed' ? '❌ 失败' : item.status === 'broadcasted' ? '📡 广播' : '⏳ 进行'}}</view>
+        <view class="badge
+          {{item.status === 'executed'    ? 'badge-green'  :
+            item.status === 'failed'      ? 'badge-red'    :
+            item.status === 'broadcasted' ? 'badge-blue'   :
+            item.status === 'offered'     ? 'badge-orange' : 'badge-gray'}}">
+          {{item.status === 'executed'    ? '✅ 成交'   :
+            item.status === 'failed'      ? '❌ 失败'   :
+            item.status === 'broadcasted' ? '📡 广播中' :
+            item.status === 'offered'     ? '💬 报价中' : '⏳ 进行中'}}
+        </view>
       </view>
 
-      <!-- 订单信息 -->
+      <!-- 订单摘要 -->
       <view class="order-meta">
-        <text class="meta-tag">¥{{item.max_price || '-'}}</text>
-        <text class="meta-tag">{{item.location || '小程序'}}</text>
-        <text class="meta-time">{{item.created_at || '-'}}</text>
+        <text class="meta-tag">预算 ¥{{item.max_price || '-'}}</text>
+        <text wx:if="{{item.selected_offer}}" class="meta-tag green">
+          成交 ¥{{item.selected_offer.final_price}}
+        </text>
+        <text class="meta-tag gray">{{item.location || '小程序'}}</text>
+        <text class="meta-time">{{item.created_at ? item.created_at + '' : '-'}}</text>
       </view>
 
       <!-- 展开详情 -->
       <block wx:if="{{activeIntentId === item.intent_id}}">
         <view class="divider"></view>
-        <view wx:if="{{isLoading}}" class="detail-loading">加载详情...</view>
+        <view wx:if="{{isLoading && !activeDetail}}" class="detail-loading">加载详情...</view>
         <view wx:elif="{{activeDetail}}" class="detail-section">
           <view class="detail-row">
             <text class="dl">Intent ID</text>
@@ -68,13 +97,21 @@
             <text class="dl">成交价</text>
             <text class="dr price">¥{{activeDetail.selected_offer.final_price}}</text>
           </view>
-          <view wx:if="{{activeDetail.selected_offer.reply_text}}" class="detail-row">
-            <text class="dl">商家回复</text>
+          <view wx:if="{{activeDetail.selected_offer && activeDetail.selected_offer.reply_text}}" class="detail-row">
+            <text class="dl">商家备注</text>
             <text class="dr">{{activeDetail.selected_offer.reply_text}}</text>
           </view>
-          <view wx:if="{{activeDetail.total_merchants}}" class="detail-row">
-            <text class="dl">参与商家</text>
-            <text class="dr">{{activeDetail.responded}}/{{activeDetail.total_merchants}}</text>
+          <view wx:if="{{activeDetail.offers && activeDetail.offers.length > 0}}" class="detail-row">
+            <text class="dl">参与报价</text>
+            <text class="dr">{{activeDetail.offers.length}} 个商家</text>
+          </view>
+          <!-- 跳转对话 -->
+          <view wx:if="{{activeDetail.status === 'executed' || activeDetail.status === 'offered'}}"
+            class="detail-action"
+            bindtap="onViewDialogue"
+            data-intent-id="{{activeDetail.intent_id}}"
+            data-merchant-id="{{activeDetail.selected_offer ? activeDetail.selected_offer.merchant_id : 'box-001'}}">
+            💬 查看对话记录
           </view>
         </view>
       </block>

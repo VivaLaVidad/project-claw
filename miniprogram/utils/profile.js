@@ -1,175 +1,147 @@
-// utils/profile.js - Project Claw 画像管理 v3.0（工业级）
-// 改进：版本迁移、TTL过期、类型校验、画像diff更新
+// utils/profile.js - Project Claw 画像管理 v4.0（工业级）
+// 对齐后端 A2A_TradeIntent / A2A_DialogueSession 协议
 
-const PROFILE_VERSION     = 3;
-const KEY_CLIENT          = `claw_client_profile_v${PROFILE_VERSION}`;
-const KEY_MERCHANT        = `claw_merchant_profile_v${PROFILE_VERSION}`;
-const KEY_HISTORY         = 'claw_search_history_v3';
-const KEY_ORDERS          = 'claw_local_orders_v3';
-const PROFILE_TTL_MS      = 7 * 24 * 3600 * 1000; // 7天
-const MAX_HISTORY         = 20;
-const MAX_LOCAL_ORDERS    = 100;
+const PROFILE_VERSION  = 4;
+const KEY_CLIENT       = `claw_client_profile_v${PROFILE_VERSION}`;
+const KEY_MERCHANT     = `claw_merchant_profile_v${PROFILE_VERSION}`;
+const KEY_HISTORY      = 'claw_search_history_v4';
+const KEY_ORDERS       = 'claw_local_orders_v4';
+const KEY_SESSIONS     = 'claw_sessions_v4';
+const PROFILE_TTL_MS   = 7 * 24 * 3600 * 1000;
+const MAX_HISTORY      = 20;
+const MAX_LOCAL_ORDERS = 100;
+const MAX_SESSIONS     = 50;
 
-// ─── 默认画像 ──────────────────────────────────────────────
 function defaultClientProfile(clientId) {
   return {
-    _v: PROFILE_VERSION,
-    _ts: Date.now(),
-    client_id:            clientId || 'unknown',
-    nickname:             '买手',
-    budget_min:           10.0,
-    budget_max:           30.0,
-    price_sensitivity:    0.8,
-    time_urgency:         0.5,
-    quality_preference:   0.6,
-    preferred_categories: [],
-    custom_tags:          [],
-    created_at:           Date.now() / 1000,
+    _v: PROFILE_VERSION, _ts: Date.now(),
+    client_id: clientId || 'unknown',
+    nickname: '买手',
+    budget_min: 10.0, budget_max: 30.0,
+    price_sensitivity: 0.8, time_urgency: 0.5, quality_preference: 0.6,
+    preferred_categories: [], custom_tags: [],
+    created_at: Date.now() / 1000,
   };
 }
 
 function defaultMerchantProfile(merchantId) {
   return {
-    _v: PROFILE_VERSION,
-    _ts: Date.now(),
-    merchant_id:           merchantId || 'unknown',
-    name:                  '我的店铺',
-    bottom_price:          10.0,
-    normal_price:          18.0,
-    max_discount_rate:     0.15,
-    delivery_time_minutes: 20,
-    quality_score:         0.85,
-    service_score:         0.80,
-    inventory_status:      {},
-    custom_tags:           [],
-    description:           '',
-    is_open:               true,
+    _v: PROFILE_VERSION, _ts: Date.now(),
+    merchant_id: merchantId || 'unknown',
+    name: '我的店铺',
+    bottom_price: 10.0, normal_price: 18.0,
+    max_discount_rate: 0.15, delivery_time_minutes: 20,
+    quality_score: 0.85, service_score: 0.80,
+    inventory_status: {}, custom_tags: [],
+    description: '', is_open: true,
   };
 }
 
-// ─── 存储工具 ─────────────────────────────────────────────
 function _safeGet(key, fallback) {
-  try {
-    const val = wx.getStorageSync(key);
-    return (val !== '' && val !== null && val !== undefined) ? val : fallback;
-  } catch(e) { return fallback; }
+  try { const v = wx.getStorageSync(key); return (v !== '' && v != null) ? v : fallback; }
+  catch (e) { return fallback; }
 }
-
 function _safeSet(key, val) {
   try { wx.setStorageSync(key, val); return true; }
-  catch(e) { console.error('[Profile] setStorage failed:', key, e); return false; }
+  catch (e) { console.error('[Profile] set failed:', key, e); return false; }
 }
+function _safeRemove(key) { try { wx.removeStorageSync(key); } catch (e) {} }
+function _isExpired(p) { return !p || !p._ts || (Date.now() - p._ts) > PROFILE_TTL_MS; }
 
-function _safeRemove(key) {
-  try { wx.removeStorageSync(key); } catch(e) {}
-}
-
-// ─── TTL 校验 ─────────────────────────────────────────────
-function _isExpired(profile) {
-  if (!profile || !profile._ts) return true;
-  return (Date.now() - profile._ts) > PROFILE_TTL_MS;
-}
-
-// ─── C端画像 ─────────────────────────────────────────────
 function saveClientProfile(profile) {
-  if (!profile || typeof profile !== 'object') return false;
+  if (!profile) return false;
   return _safeSet(KEY_CLIENT, { ...profile, _v: PROFILE_VERSION, _ts: Date.now() });
 }
-
 function loadClientProfile(clientId) {
-  const stored = _safeGet(KEY_CLIENT, null);
-  if (stored && stored._v === PROFILE_VERSION && !_isExpired(stored)) return stored;
-  // 版本不匹配或已过期：重建默认画像，保留已知字段
+  const s = _safeGet(KEY_CLIENT, null);
+  if (s && s._v === PROFILE_VERSION && !_isExpired(s)) return s;
   const def = defaultClientProfile(clientId);
-  if (stored) {
-    const safe = ['nickname','budget_min','budget_max','price_sensitivity',
-                  'time_urgency','quality_preference','preferred_categories','custom_tags'];
-    safe.forEach(k => { if (stored[k] !== undefined) def[k] = stored[k]; });
-  }
+  if (s) ['nickname','budget_min','budget_max','price_sensitivity','time_urgency',
+    'quality_preference','preferred_categories','custom_tags']
+    .forEach(k => { if (s[k] !== undefined) def[k] = s[k]; });
   saveClientProfile(def);
   return def;
 }
-
 function updateClientProfile(clientId, patch) {
-  const current = loadClientProfile(clientId);
-  const updated  = { ...current, ...patch };
-  saveClientProfile(updated);
-  return updated;
+  const cur = loadClientProfile(clientId);
+  const upd = { ...cur, ...patch };
+  saveClientProfile(upd);
+  return upd;
 }
 
-// ─── B端画像 ─────────────────────────────────────────────
 function saveMerchantProfile(profile) {
-  if (!profile || typeof profile !== 'object') return false;
+  if (!profile) return false;
   return _safeSet(KEY_MERCHANT, { ...profile, _v: PROFILE_VERSION, _ts: Date.now() });
 }
-
 function loadMerchantProfile(merchantId) {
-  const stored = _safeGet(KEY_MERCHANT, null);
-  if (stored && stored._v === PROFILE_VERSION && !_isExpired(stored)) return stored;
+  const s = _safeGet(KEY_MERCHANT, null);
+  if (s && s._v === PROFILE_VERSION && !_isExpired(s)) return s;
   const def = defaultMerchantProfile(merchantId);
-  if (stored) {
-    const safe = ['name','bottom_price','normal_price','max_discount_rate',
-                  'delivery_time_minutes','quality_score','service_score','custom_tags','description','is_open'];
-    safe.forEach(k => { if (stored[k] !== undefined) def[k] = stored[k]; });
-  }
+  if (s) ['name','bottom_price','normal_price','max_discount_rate','delivery_time_minutes',
+    'quality_score','service_score','custom_tags','description','is_open']
+    .forEach(k => { if (s[k] !== undefined) def[k] = s[k]; });
   saveMerchantProfile(def);
   return def;
 }
 
-// ─── 搜索历史 ────────────────────────────────────────────
 function addSearchHistory(item) {
-  if (!item || typeof item !== 'string') return;
-  const history = _safeGet(KEY_HISTORY, []);
-  const deduped = [item.trim(), ...history.filter(h => h !== item.trim())].slice(0, MAX_HISTORY);
-  _safeSet(KEY_HISTORY, deduped);
+  if (!item) return;
+  const h = _safeGet(KEY_HISTORY, []);
+  _safeSet(KEY_HISTORY, [item.trim(), ...h.filter(x => x !== item.trim())].slice(0, MAX_HISTORY));
 }
-
 function getSearchHistory() { return _safeGet(KEY_HISTORY, []); }
 function clearSearchHistory() { _safeRemove(KEY_HISTORY); }
 
-// ─── 本地订单缓存 ────────────────────────────────────────
 function saveLocalOrder(order) {
   if (!order || !order.intent_id) return;
   const orders = _safeGet(KEY_ORDERS, []);
-  // 去重：同 intent_id 更新
-  const filtered = orders.filter(o => o.intent_id !== order.intent_id);
-  _safeSet(KEY_ORDERS, [{ ...order, _cached_at: Date.now() }, ...filtered].slice(0, MAX_LOCAL_ORDERS));
+  _safeSet(KEY_ORDERS, [{ ...order, _cached_at: Date.now() },
+    ...orders.filter(o => o.intent_id !== order.intent_id)].slice(0, MAX_LOCAL_ORDERS));
 }
-
 function getLocalOrders() { return _safeGet(KEY_ORDERS, []); }
-
 function clearLocalOrders() { _safeRemove(KEY_ORDERS); }
 
-// ─── 满意度计算 ──────────────────────────────────────────
-function calcClientSatisfaction(profile, offeredPrice, deliveryTime) {
+function saveSession(session) {
+  if (!session || !session.session_id) return;
+  const sessions = _safeGet(KEY_SESSIONS, []);
+  _safeSet(KEY_SESSIONS, [{ ...session, _cached_at: Date.now() },
+    ...sessions.filter(s => s.session_id !== session.session_id)].slice(0, MAX_SESSIONS));
+}
+function getSessions() { return _safeGet(KEY_SESSIONS, []); }
+
+function calcClientSatisfaction(profile, offeredPrice, deliveryMinutes) {
   const p = profile || {};
-  const budgetMin = Number(p.budget_min) || 10;
-  const budgetMax = Number(p.budget_max) || 30;
-  const timeUrgency = Number(p.time_urgency) || 0.5;
-
-  let priceScore;
-  if (offeredPrice <= budgetMin) {
-    priceScore = 1.0;
-  } else if (offeredPrice <= budgetMax) {
-    priceScore = 1.0 - ((offeredPrice - budgetMin) / Math.max(1, budgetMax - budgetMin)) * 0.4;
-  } else {
-    priceScore = Math.max(0, 0.6 - (offeredPrice - budgetMax) / Math.max(1, budgetMax) * 0.5);
-  }
-
-  const timeScore = Math.max(0, 1.0 - (deliveryTime / 45.0) * timeUrgency);
-  const overall   = priceScore * 0.65 + timeScore * 0.35;
-
+  const bMin = Number(p.budget_min) || 10;
+  const bMax = Number(p.budget_max) || 30;
+  const tu   = Number(p.time_urgency) || 0.5;
+  let ps;
+  if (offeredPrice <= bMin)       ps = 1.0;
+  else if (offeredPrice <= bMax)  ps = 1.0 - ((offeredPrice-bMin)/Math.max(1,bMax-bMin))*0.4;
+  else                            ps = Math.max(0, 0.6-(offeredPrice-bMax)/Math.max(1,bMax)*0.5);
+  const ts = Math.max(0, 1.0-(deliveryMinutes/45.0)*tu);
+  const ov = ps*0.65 + ts*0.35;
   return {
-    overall: Math.round(Math.min(100, Math.max(0, overall * 100))),
-    price:   Math.round(Math.min(100, Math.max(0, priceScore * 100))),
-    time:    Math.round(Math.min(100, Math.max(0, timeScore  * 100))),
+    overall: Math.round(Math.min(100, Math.max(0, ov*100))),
+    price:   Math.round(Math.min(100, Math.max(0, ps*100))),
+    time:    Math.round(Math.min(100, Math.max(0, ts*100))),
   };
 }
 
-// ─── 构建 Intent ─────────────────────────────────────────
-function buildIntent(clientId, itemName, expectedPrice, maxDistanceKm) {
+// 对齐后端 /intent 接口 ClientIntent 模型
+function buildIntent(clientId, itemName, expectedPrice) {
   return {
-    intent_id:       `mp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    client_id:      clientId,
+    location:       '小程序',
+    demand_text:    String(itemName).trim(),
+    max_price:      Number(expectedPrice),
+    timeout:        3.0,
+    client_profile: {},
+  };
+}
+
+// 对齐后端 A2A_TradeIntent（/a2a/intent 接口）
+function buildA2AIntent(clientId, itemName, expectedPrice, maxDistanceKm) {
+  return {
     client_id:       clientId,
     item_name:       String(itemName).trim(),
     expected_price:  Number(expectedPrice),
@@ -178,32 +150,20 @@ function buildIntent(clientId, itemName, expectedPrice, maxDistanceKm) {
   };
 }
 
-// ─── 时间格式化 ──────────────────────────────────────────
 function formatTime(ts) {
   if (!ts) return '-';
-  const d    = new Date(Number(ts) * 1000);
-  const now  = new Date();
+  const d = new Date(Number(ts) * 1000);
+  const now = new Date();
   const diffH = (now - d) / 3600000;
-  if (diffH < 1/60) return '刚刚';
-  if (diffH < 1)    return `${Math.floor(diffH * 60)}分钟前`;
-  if (diffH < 24)   return `${Math.floor(diffH)}小时前`;
-  if (diffH < 48)   return '昨天';
-  const hh = String(d.getHours()).padStart(2,'0');
-  const mm  = String(d.getMinutes()).padStart(2,'0');
-  return `${d.getMonth()+1}/${d.getDate()} ${hh}:${mm}`;
+  if (diffH < 1/60)  return '刚刚';
+  if (diffH < 1)     return `${Math.floor(diffH*60)}分钟前`;
+  if (diffH < 24)    return `${Math.floor(diffH)}小时前`;
+  if (diffH < 48)    return '昨天';
+  return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
-// ─── 状态映射 ────────────────────────────────────────────
-const STATUS_TEXT = {
-  created:'已创建', broadcasted:'广播中', offered:'报价中',
-  executing:'执行中', executed:'已成交', failed:'失败',
-  OPEN:'进行中', CLOSED:'已结束',
-};
-const STATUS_CLASS = {
-  created:'gray', broadcasted:'blue', offered:'orange',
-  executing:'orange', executed:'green', failed:'red',
-  OPEN:'blue', CLOSED:'gray',
-};
+const STATUS_TEXT  = { created:'已创建', broadcasted:'广播中', offered:'报价中', executing:'执行中', executed:'已成交', failed:'失败', OPEN:'进行中', CLOSED:'已结束' };
+const STATUS_CLASS = { created:'gray', broadcasted:'blue', offered:'orange', executing:'orange', executed:'green', failed:'red', OPEN:'blue', CLOSED:'gray' };
 function statusText(s)  { return STATUS_TEXT[s]  || s || '-'; }
 function statusClass(s) { return `status-${STATUS_CLASS[s] || 'gray'}`; }
 
@@ -213,6 +173,7 @@ module.exports = {
   saveMerchantProfile, loadMerchantProfile,
   addSearchHistory, getSearchHistory, clearSearchHistory,
   saveLocalOrder, getLocalOrders, clearLocalOrders,
-  calcClientSatisfaction, buildIntent,
+  saveSession, getSessions,
+  calcClientSatisfaction, buildIntent, buildA2AIntent,
   formatTime, statusText, statusClass,
 };
