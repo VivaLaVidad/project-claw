@@ -391,7 +391,6 @@ dialogue_arena = DialogueArena()
 
 @app.on_event("startup")
 async def startup():
-    audit.init_lock()
     asyncio.ensure_future(manager.heartbeat_loop())
     logger.info("=" * 60)
     logger.info("Project Claw Signaling Server v13.0 启动")
