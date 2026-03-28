@@ -7,8 +7,11 @@ App({
     clientId: '',
     merchantId: 'box-001',
     userProfile: null,
-    serverBase: 'https://project-claw-production.up.railway.app',
-    wsBase:     'wss://project-claw-production.up.railway.app',
+    // ── 服务器地址：本地调试改为 http://127.0.0.1:8765，生产用 Railway 地址 ──
+    serverBase: 'http://127.0.0.1:8765',
+    wsBase:     'ws://127.0.0.1:8765',
+    // serverBase: 'https://project-claw-production.up.railway.app',
+    // wsBase:     'wss://project-claw-production.up.railway.app',
     token: '',
     isConnected: false,
     serverVersion: '',

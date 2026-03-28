@@ -1,4 +1,4 @@
-<!-- pages/merchant/merchant.wxml -->
+<!-- pages/merchant/merchant.wxml v3.0 -->
 <view class="container">
 
   <!-- 顶部商家卡片 -->
@@ -37,6 +37,30 @@
     </view>
   </view>
 
+  <!-- Agent 运行状态卡片 -->
+  <view class="card agent-status-card">
+    <view class="agent-status-header">
+      <text class="agent-status-title">🤖 B端Agent状态</text>
+      <view class="agent-status-badge {{agentRunning ? 'badge-running' : 'badge-stopped'}}">
+        <view class="badge-dot"></view>
+        <text>{{agentRunning ? '运行中' : '未启动'}}</text>
+      </view>
+    </view>
+    <view class="agent-info-row">
+      <text class="agent-info-label">信令服务器</text>
+      <text class="agent-info-val">{{signalingUrl}}</text>
+    </view>
+    <view class="agent-info-row">
+      <text class="agent-info-label">待处理意图</text>
+      <text class="agent-info-val blue">{{stats.pending_intents || 0}}</text>
+    </view>
+    <view class="agent-info-row">
+      <text class="agent-info-label">累计收益</text>
+      <text class="agent-info-val green">¥{{totalRevenue.toFixed(2)}}</text>
+    </view>
+    <button class="refresh-btn-full" bindtap="onRefreshStats">↻ 刷新状态</button>
+  </view>
+
   <!-- B端Agent策略设置 -->
   <view class="section-title">🧠 B端Agent谈判策略</view>
   <view class="card">
@@ -61,7 +85,7 @@
         data-key="delivery_time_minutes" bindchange="onSliderChange" activeColor="#e94560" />
     </view>
     <view class="profile-row">
-      <text class="profile-label">品质评分 {{profile.quality_score * 100 | 0}}%</text>
+      <text class="profile-label">品质评分 {{(profile.quality_score * 100) | 0}}%</text>
       <slider min="0" max="100" value="{{profile.quality_score * 100}}" step="1"
         data-key="quality_score" bindchange="onSliderChange" activeColor="#e94560" />
     </view>
@@ -87,20 +111,33 @@
     <view class="config-row">
       <text class="config-label">Agent连接状态</text>
       <text class="config-val {{wsStatus === 'connected' ? 'green' : 'red'}}">
-        {{wsStatus === 'connected' ? '✅ 已连接Railway' : '❌ 未连接'}}
+        {{wsStatus === 'connected' ? '✅ 已连接' : '❌ 未连接'}}
       </text>
     </view>
-    <view class="config-row">
-      <text class="config-label">待处理意图</text>
-      <text class="config-val">{{stats.pending_intents || 0}}</text>
-    </view>
-    <button class="refresh-btn-full" bindtap="onRefreshStats">↻ 刷新状态</button>
   </view>
 
   <!-- 启动说明 -->
+  <view class="section-title">📡 B端Agent启动方式</view>
   <view class="card tip-card">
-    <text class="tip-title">📡 如何启动B端Agent</text>
-    <text class="tip-text">在本地终端运行：\n.\start_edge.ps1\n\nAgent将自动连接Railway云端，接收C端砍价请求并自动报价。</text>
+    <view class="tip-step">
+      <text class="tip-step-num">1</text>
+      <text class="tip-step-text">确保云端信令服务已启动\npython run_stack.py signaling</text>
+    </view>
+    <view class="tip-step">
+      <text class="tip-step-num">2</text>
+      <text class="tip-step-text">在本地 PowerShell 运行：\n.\start_edge.ps1</text>
+    </view>
+    <view class="tip-step">
+      <text class="tip-step-num">3</text>
+      <text class="tip-step-text">或直接运行 Python：\npython edge_box/ws_listener.py</text>
+    </view>
+    <view class="tip-step">
+      <text class="tip-step-num">4</text>
+      <text class="tip-step-text">Agent自动连接信令服务器\n接收C端砍价请求并自动报价</text>
+    </view>
+    <view class="tip-note">
+      <text class="tip-note-text">💡 无Android设备时自动使用MockDriver，所有操作记录日志但不执行物理动作</text>
+    </view>
   </view>
 
 </view>

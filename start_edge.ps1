@@ -1,36 +1,29 @@
-# start_edge.ps1 - B端Agent一键启动（连接Railway云端）v2.0
-# 用法: .\start_edge.ps1
+# start_edge.ps1 - B端 Edge Box 一键启动脚本
+# 在本地终端运行此脚本以启动 B端 Agent
+
+Write-Host '[Edge] Project Claw B端 Agent 启动器' -ForegroundColor Cyan
+Write-Host '[Edge] 连接信令服务器...' -ForegroundColor Yellow
 
 $ROOT = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $ROOT
+$PYTHON = 'D:\Python1\python.exe'
 
-Write-Host ""
-Write-Host "  🤖  Project Claw - B端 Edge Box Agent" -ForegroundColor Yellow
-Write-Host "  ─────────────────────────────────────" -ForegroundColor DarkGray
-
-# ── 设置环境变量 ──
-$env:A2A_SIGNALING_URL   = "wss://project-claw-production.up.railway.app/ws/a2a/merchant/box-001"
-$env:A2A_MERCHANT_ID     = "box-001"
-$env:A2A_SIGNING_SECRET  = "claw-a2a-signing-secret"
-
-# 读取 .env 中的 DEEPSEEK_API_KEY
-if (Test-Path "$ROOT\.env") {
-    $envFile = Get-Content "$ROOT\.env" | Where-Object { $_ -match '^DEEPSEEK_API_KEY=' }
-    if ($envFile) {
-        $env:DEEPSEEK_API_KEY = ($envFile -replace '^DEEPSEEK_API_KEY=', '').Trim()
-        Write-Host "  ✅  DEEPSEEK_API_KEY 已加载" -ForegroundColor Green
-    } else {
-        Write-Host "  ⚠️  .env 中没有 DEEPSEEK_API_KEY" -ForegroundColor Yellow
+# 检查 Python
+if (-not (Test-Path $PYTHON)) {
+    $PYTHON = (Get-Command python -ErrorAction SilentlyContinue).Source
+    if (-not $PYTHON) {
+        Write-Host '[Edge] 未找到 Python，请先安装 Python 3.11+' -ForegroundColor Red
+        exit 1
     }
-} else {
-    Write-Host "  ⚠️  .env 文件不存在" -ForegroundColor Yellow
 }
 
-Write-Host "  ✅  WS  -> $env:A2A_SIGNALING_URL" -ForegroundColor Cyan
-Write-Host "  ✅  ID  -> $env:A2A_MERCHANT_ID" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "  启动中，按 Ctrl+C 停止..." -ForegroundColor Gray
-Write-Host ""
+Write-Host "[Edge] 使用 Python: $PYTHON" -ForegroundColor Green
 
-# ── 启动 B端 Agent ──
-python -m edge_box.ws_listener
+# 启动 Edge Box WebSocket 监听器
+$env:PYTHONUNBUFFERED = '1'
+try {
+    & $PYTHON -c "import sys; sys.path.insert(0, '$ROOT'); from edge_box.ws_listener import EdgeBoxWSListener; import asyncio; asyncio.run(EdgeBoxWSListener().run_forever())"
+} catch {
+    Write-Host "[Edge] 启动失败: $_" -ForegroundColor Red
+    Write-Host '[Edge] 尝试直接运行 ws_listener.py...' -ForegroundColor Yellow
+    & $PYTHON "$ROOT\edge_box\ws_listener.py"
+}

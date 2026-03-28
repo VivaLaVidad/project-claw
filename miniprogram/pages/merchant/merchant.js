@@ -1,4 +1,4 @@
-// pages/merchant/merchant.js - B端商家控制台 v2.0
+// pages/merchant/merchant.js - B端商家控制台 v3.0
 const { createRequest, SystemAPI, ProfileAPI, DialogueAPI } = require('../../api/request');
 const ProfileManager = require('../../utils/profile');
 
@@ -16,28 +16,37 @@ Page({
     totalRevenue: 0,
     successRate: 0,
     wsStatus: 'disconnected',
+    agentRunning: false,
+    signalingUrl: 'ws://127.0.0.1:8765',
   },
 
   _sysAPI: null,
   _profileAPI: null,
+  _dialogueAPI: null,
   _pollTimer: null,
 
   onLoad() {
     const app = getApp();
     const request = createRequest(app.globalData.serverBase, app.globalData.token);
-    this._sysAPI    = SystemAPI(request);
+    this._sysAPI     = SystemAPI(request);
     this._profileAPI = ProfileAPI(request);
     this._dialogueAPI = DialogueAPI(request);
 
     const merchantId = wx.getStorageSync('claw_merchant_id') || 'box-001';
     const profile = ProfileManager.loadMerchantProfile(merchantId);
-    this.setData({ merchantId, profile, editProfile: { ...profile } });
+    const app2 = getApp();
+    this.setData({
+      merchantId,
+      profile,
+      editProfile: { ...profile },
+      signalingUrl: (app2.globalData.wsBase || 'ws://127.0.0.1:8765')
+        + '/ws/a2a/merchant/' + merchantId,
+    });
     this._loadStats();
     this._startPolling();
   },
 
   onShow() { this._loadStats(); },
-
   onUnload() { this._stopPolling(); },
 
   _startPolling() {
@@ -51,15 +60,21 @@ Page({
 
   async _loadStats() {
     try {
+      const app = getApp();
       const res = await this._sysAPI.stats();
       const isOnline = (res.merchant_ids || []).includes(this.data.merchantId);
       const m = res.metrics || {};
-      const total = m.execute_total || 0;
+      const total   = m.execute_total   || 0;
       const success = m.execute_success || 0;
+      const revenue = m.total_revenue   || 0;
       this.setData({
         stats: res,
         isOnline,
+        agentRunning: isOnline,
+        signalingUrl: (app.globalData.wsBase || 'ws://127.0.0.1:8765')
+          + '/ws/a2a/merchant/' + this.data.merchantId,
         totalNegotiations: m.intent_total || 0,
+        totalRevenue: revenue,
         successRate: total > 0 ? Math.round(success / total * 100) : 0,
         wsStatus: isOnline ? 'connected' : 'disconnected',
       });
@@ -82,7 +97,6 @@ Page({
       this.setData({ profile: { ...editProfile }, showProfileEdit: false });
       wx.showToast({ title: '画像已更新', icon: 'success' });
     } catch (e) {
-      // 网络失败时只保存本地
       ProfileManager.saveMerchantProfile(editProfile);
       this.setData({ profile: { ...editProfile }, showProfileEdit: false });
       wx.showToast({ title: '已本地保存', icon: 'none' });
@@ -95,8 +109,8 @@ Page({
   onEditField(e) {
     const key = e.currentTarget.dataset.key;
     const raw = e.detail.value;
-    const numFields = ['bottom_price','normal_price','max_discount_rate',
-      'delivery_time_minutes','quality_score','service_score'];
+    const numFields = ['bottom_price', 'normal_price', 'max_discount_rate',
+      'delivery_time_minutes', 'quality_score', 'service_score'];
     const value = numFields.includes(key) ? parseFloat(raw) || 0 : raw;
     this.setData({ [`editProfile.${key}`]: value });
   },
@@ -104,7 +118,7 @@ Page({
   onSliderChange(e) {
     const key = e.currentTarget.dataset.key;
     const val = e.detail.value;
-    const factor = ['max_discount_rate','quality_score','service_score'].includes(key) ? 100 : 1;
+    const factor = ['max_discount_rate', 'quality_score', 'service_score'].includes(key) ? 100 : 1;
     this.setData({ [`editProfile.${key}`]: val / factor });
   },
 
@@ -131,7 +145,13 @@ Page({
         if (res.confirm && res.content) {
           const newId = res.content.trim();
           wx.setStorageSync('claw_merchant_id', newId);
-          this.setData({ merchantId: newId, 'editProfile.merchant_id': newId });
+          const app = getApp();
+          this.setData({
+            merchantId: newId,
+            'editProfile.merchant_id': newId,
+            signalingUrl: (app.globalData.wsBase || 'ws://127.0.0.1:8765')
+              + '/ws/a2a/merchant/' + newId,
+          });
           wx.showToast({ title: '商家ID已更新', icon: 'success' });
         }
       },
