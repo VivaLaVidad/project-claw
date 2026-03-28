@@ -72,48 +72,35 @@ class AgentState(TypedDict):
 
 # ==================== LLM 异步调用（Retry）====================
 
-DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
-_API_KEY: str = ""
+# ── LLM 客户端（统一接入，消除硬编码）──────────────────────
+def _get_llm_client(max_tokens: int = 200, temperature: float = 0.3) -> "LLMClient":
+    """从 settings 获取配置，懒创建 LLMClient。"""
+    return LLMClient(
+        api_key     = settings.DEEPSEEK_API_KEY,
+        api_url     = settings.DEEPSEEK_API_URL,
+        model       = settings.DEEPSEEK_MODEL,
+        temperature = temperature,
+        max_tokens  = max_tokens,
+        timeout     = settings.DEEPSEEK_TIMEOUT,
+        max_retries = settings.DEEPSEEK_MAX_RETRIES,
+    )
 
 
-@retry(
-    reraise=True,
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=1, max=8),
-    retry=retry_if_exception_type((
-        requests.exceptions.Timeout,
-        requests.exceptions.ConnectionError,
-    )),
-    before_sleep=before_sleep_log(logger, logging.WARNING),
-)
 async def _call_llm_async(
     messages: list,
     max_tokens: int = 200,
     temperature: float = 0.3,
 ) -> str:
     """
-    异步调用 DeepSeek，tenacity 自动重试 3 次。
-    asyncio.to_thread 将阻塞 requests 包装为非阻塞。
+    异步调用 LLM（通过 LLMClient 统一封装）。
+    tenacity 重试已在 LLMClient._call() 内部处理。
+    asyncio.to_thread 保证不阻塞事件循环。
     """
-    def _sync():
-        r = requests.post(
-            DEEPSEEK_URL,
-            json={
-                "model": "deepseek-chat",
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            },
-            headers={
-                "Authorization": f"Bearer {_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            timeout=12,
-        )
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"].strip()
-
-    return await asyncio.to_thread(_sync)
+    client = _get_llm_client(max_tokens=max_tokens, temperature=temperature)
+    result = await asyncio.to_thread(client.ask_messages, messages, temperature)
+    if result is None:
+        raise RuntimeError("LLMClient 返回 None，可能 API Key 无效或服务不可用")
+    return result
 
 
 def _parse_json(raw: str) -> dict:

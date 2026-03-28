@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import logging.handlers
+import os
 import time
 from pathlib import Path
 
@@ -11,45 +12,66 @@ from rich.text import Text
 
 from config import settings
 
-
 console = Console(force_terminal=True, soft_wrap=True)
+
 HTTP_NOISE_LOGGERS = {
-    "uvicorn",
-    "uvicorn.access",
-    "uvicorn.error",
-    "httpx",
-    "urllib3",
-    "asyncio",
+    "uvicorn", "uvicorn.access", "uvicorn.error",
+    "httpx", "urllib3", "asyncio",
 }
 SHOWCASE_EVENT_FILE = Path(settings.SHOWCASE_EVENT_FILE)
 
+# ─── 生产环境 JSON 日志（Railway / Docker 采集）────────────────
+_IS_PRODUCTION = os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("PRODUCTION", "")
 
+
+class JSONFormatter(logging.Formatter):
+    """
+    结构化 JSON 日志格式（生产环境）。
+    每行一个 JSON，方便 Datadog/Loki/Railway 日志采集。
+    """
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "ts":      time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(record.created)),
+            "level":   record.levelname,
+            "logger":  record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exc"] = self.formatException(record.exc_info)
+        # 附加 showcase 字段
+        for attr in ("event_type", "ocr_snippet", "handshake_seed", "coords"):
+            val = getattr(record, attr, None)
+            if val is not None:
+                payload[attr] = val
+        return json.dumps(payload, ensure_ascii=False)
+
+
+# ─── 过滤器 ──────────────────────────────────────────────────
 class BusinessOnlyFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        message = record.getMessage()
         if getattr(record, "showcase", False):
             return True
         if record.name in HTTP_NOISE_LOGGERS:
             return False
         noise_tokens = ("GET /", "POST /", '" 200', '" 404', '" 500', "HTTP/")
-        return not any(token in message for token in noise_tokens)
+        return not any(token in record.getMessage() for token in noise_tokens)
 
 
+# ─── Showcase 文件 Handler ────────────────────────────────────
 class ShowcaseEventFileHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         if not getattr(record, "showcase", False):
             return
         try:
             SHOWCASE_EVENT_FILE.parent.mkdir(exist_ok=True)
-            event = getattr(record, "event_type", "")
             payload = {
-                "ts": time.time(),
-                "logger": record.name,
-                "event_type": event,
-                "message": record.getMessage(),
-                "ocr_snippet": getattr(record, "ocr_snippet", None),
+                "ts":             time.time(),
+                "logger":         record.name,
+                "event_type":     getattr(record, "event_type", ""),
+                "message":        record.getMessage(),
+                "ocr_snippet":    getattr(record, "ocr_snippet", None),
                 "handshake_seed": getattr(record, "handshake_seed", None),
-                "coords": getattr(record, "coords", None),
+                "coords":         getattr(record, "coords", None),
             }
             with SHOWCASE_EVENT_FILE.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(payload, ensure_ascii=False) + "\n")
@@ -57,6 +79,7 @@ class ShowcaseEventFileHandler(logging.Handler):
             pass
 
 
+# ─── Rich 控制台 Formatter（开发环境）────────────────────────
 class ShowcaseFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         event = getattr(record, "event_type", "")
@@ -67,8 +90,8 @@ class ShowcaseFormatter(logging.Formatter):
                 f"[white]{snippet[:120]}[/white]"
             ).plain
         if event == "a2a_handshake":
-            handshake_seed = getattr(record, "handshake_seed", record.getMessage())
-            digest = "0x" + hashlib.sha256(str(handshake_seed).encode("utf-8")).hexdigest()[:18]
+            seed   = getattr(record, "handshake_seed", record.getMessage())
+            digest = "0x" + hashlib.sha256(str(seed).encode()).hexdigest()[:18]
             return console.render_str(
                 f"[bold bright_magenta][🔗 A2A-HANDSHAKE][/bold bright_magenta] "
                 f"[white]Hash:[/white] [magenta]{digest}[/magenta]"
@@ -92,8 +115,8 @@ class ShowcaseRichHandler(RichHandler):
                 (snippet[:140], "white"),
             )
         if event == "a2a_handshake":
-            handshake_seed = getattr(record, "handshake_seed", record.getMessage())
-            digest = "0x" + hashlib.sha256(str(handshake_seed).encode("utf-8")).hexdigest()[:18]
+            seed   = getattr(record, "handshake_seed", record.getMessage())
+            digest = "0x" + hashlib.sha256(str(seed).encode()).hexdigest()[:18]
             return Text.assemble(
                 ("[🔗 A2A-HANDSHAKE] ", "bold bright_magenta"),
                 ("Hash: ", "white"),
@@ -108,6 +131,7 @@ class ShowcaseRichHandler(RichHandler):
         return Text(message)
 
 
+# ─── ShowcaseLogger ───────────────────────────────────────────
 class ShowcaseLogger(logging.Logger):
     def vision_scan(self, snippet: str) -> None:
         self.info(
@@ -121,68 +145,67 @@ class ShowcaseLogger(logging.Logger):
             extra={"showcase": True, "event_type": "a2a_handshake", "handshake_seed": seed},
         )
 
-    def execute_rpa(self, x: float, y: float) -> None:
+    def execute_rpa(self, coords: str) -> None:
         self.info(
             "execute rpa",
-            extra={"showcase": True, "event_type": "execute_rpa", "coords": f"tap=({x:.1f}, {y:.1f})"},
+            extra={"showcase": True, "event_type": "execute_rpa", "coords": coords},
         )
 
 
-logging.setLoggerClass(ShowcaseLogger)
+# ─── 主入口 ───────────────────────────────────────────────────
+def setup_logger(name: str, level: str = "") -> ShowcaseLogger:
+    """
+    创建 ShowcaseLogger。
 
+    生产环境（RAILWAY_ENVIRONMENT 或 PRODUCTION 已设置）：
+      - JSON 结构化日志输出到 stdout
+      - 日志轮转文件（10MB × 5份）
 
-def _build_file_handler(log_dir: Path) -> logging.Handler:
-    file_handler = logging.handlers.RotatingFileHandler(
-        log_dir / settings.LOG_FILE,
-        maxBytes=10 * 1024 * 1024,
-        backupCount=5,
-        encoding="utf-8",
-    )
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(logging.Formatter(settings.LOG_FORMAT))
-    return file_handler
-
-
-def _build_console_handler() -> logging.Handler:
-    handler = ShowcaseRichHandler(
-        console=console,
-        show_time=False,
-        show_level=False,
-        show_path=False,
-        markup=True,
-        rich_tracebacks=True,
-    )
-    handler.setLevel(getattr(logging, settings.LOG_LEVEL))
-    handler.addFilter(BusinessOnlyFilter())
-    return handler
-
-
-def _build_showcase_event_handler() -> logging.Handler:
-    handler = ShowcaseEventFileHandler()
-    handler.setLevel(logging.INFO)
-    return handler
-
-
-def setup_logger(name: str = "lobster") -> ShowcaseLogger:
+    开发环境：
+      - Rich 彩色控制台
+      - Showcase 事件写入 JSONL 文件
+    """
+    logging.setLoggerClass(ShowcaseLogger)
     logger = logging.getLogger(name)
-    logger.setLevel(getattr(logging, settings.LOG_LEVEL))
-    logger.propagate = False
+    if logger.handlers:
+        return logger  # type: ignore[return-value]
+
+    effective_level = getattr(logging, (level or settings.LOG_LEVEL).upper(), logging.INFO)
+    logger.setLevel(effective_level)
+    logger.addFilter(BusinessOnlyFilter())
 
     log_dir = Path(settings.LOG_DIR)
-    log_dir.mkdir(exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
 
-    if not logger.handlers:
-        logger.addHandler(_build_file_handler(log_dir))
-        logger.addHandler(_build_console_handler())
-        logger.addHandler(_build_showcase_event_handler())
+    if _IS_PRODUCTION:
+        # ── 生产：JSON stdout ──
+        sh = logging.StreamHandler()
+        sh.setFormatter(JSONFormatter())
+        logger.addHandler(sh)
+    else:
+        # ── 开发：Rich 彩色控制台 ──
+        rh = ShowcaseRichHandler(
+            console=console,
+            show_time=True,
+            show_path=False,
+            rich_tracebacks=True,
+        )
+        logger.addHandler(rh)
+        # Showcase 事件文件
+        logger.addHandler(ShowcaseEventFileHandler())
 
-    for noisy_name in HTTP_NOISE_LOGGERS:
-        noisy_logger = logging.getLogger(noisy_name)
-        noisy_logger.handlers = []
-        noisy_logger.propagate = False
-        noisy_logger.setLevel(logging.CRITICAL)
+    # ── 日志轮转文件（生产+开发均开启）──
+    log_file = log_dir / settings.LOG_FILE
+    fh = logging.handlers.RotatingFileHandler(
+        log_file,
+        maxBytes   = 10 * 1024 * 1024,  # 10 MB
+        backupCount = 5,
+        encoding   = "utf-8",
+    )
+    fh.setFormatter(JSONFormatter() if _IS_PRODUCTION else logging.Formatter(
+        fmt="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    ))
+    logger.addHandler(fh)
 
     return logger  # type: ignore[return-value]
-
-
-logger = setup_logger()
