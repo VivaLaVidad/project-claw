@@ -1,3 +1,13 @@
+"""
+run_stack.py - Project Claw v14.3
+工业级进程编排启动脚本
+
+改进：
+- 修复引用已删除 demo_dashboard.py 的 bug
+- 加健康检查等待（等 signaling 就绪后再启 siri）
+- 自动重启崩溃子进程（可配置）
+- 详细的启动/退出日志
+"""
 from __future__ import annotations
 
 import argparse
@@ -8,78 +18,101 @@ import sys
 import time
 from pathlib import Path
 
+import requests
+
 from config import settings
 
-ROOT = Path(__file__).resolve().parent
+ROOT   = Path(__file__).resolve().parent
 PYTHON = Path(sys.executable)
 
-SERVICES = {
+SERVICES: dict[str, list[str]] = {
     "signaling": [
-        str(PYTHON),
-        "-m",
-        "uvicorn",
+        str(PYTHON), "-m", "uvicorn",
         "a2a_signaling_server:app",
-        "--host",
-        settings.SIGNALING_HOST,
-        "--port",
-        str(int(os.environ.get("PORT", settings.SIGNALING_PORT))),
+        "--host", settings.SIGNALING_HOST,
+        "--port", str(int(os.environ.get("PORT", settings.SIGNALING_PORT))),
     ],
     "siri": [
-        str(PYTHON),
-        "-m",
-        "uvicorn",
+        str(PYTHON), "-m", "uvicorn",
         "cloud_server.api_server_pro:app",
-        "--host",
-        settings.SIRI_HOST,
-        "--port",
-        str(settings.SIRI_PORT),
+        "--host", "0.0.0.0",
+        "--port", "8010",
     ],
-    "dashboard": [str(PYTHON), str(ROOT / "demo_dashboard.py")],
+    "dashboard": [
+        str(PYTHON), "-m", "streamlit", "run",
+        str(ROOT / "god_mode_dashboard.py"),
+        "--server.port", "8501",
+        "--server.headless", "true",
+    ],
 }
 
+# 需要在 signaling 就绪后才启动的服务
+_DEPENDS_ON_SIGNALING = {"siri", "dashboard"}
 
-def start_service(name: str) -> subprocess.Popen[str]:
+
+# ─── 工具函数 ──────────────────────────────────────────────────
+def _log(msg: str) -> None:
+    ts = time.strftime("%H:%M:%S")
+    print(f"[stack {ts}] {msg}", flush=True)
+
+
+def _wait_signaling_ready(timeout: int = 30) -> bool:
+    """轮询等待 signaling 服务健康检查通过。"""
+    url = f"{settings.signaling_http_base_url}/health"
+    deadline = time.time() + timeout
+    _log(f"等待 signaling 就绪: {url}")
+    while time.time() < deadline:
+        try:
+            r = requests.get(url, timeout=2)
+            if r.status_code < 400:
+                _log("signaling 已就绪 ✓")
+                return True
+        except Exception:
+            pass
+        time.sleep(1)
+    _log(f"signaling 在 {timeout}s 内未就绪，继续启动其他服务")
+    return False
+
+
+def start_service(name: str) -> "subprocess.Popen[str]":
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")
-    print(f"[stack] starting {name}: {' '.join(SERVICES[name])}")
-    return subprocess.Popen(
-        SERVICES[name],
-        cwd=str(ROOT),
-        env=env,
-        text=True,
-    )
+    cmd = SERVICES[name]
+    _log(f"启动 {name}: {' '.join(cmd)}")
+    return subprocess.Popen(cmd, cwd=str(ROOT), env=env, text=True)
 
 
-def terminate_processes(processes: dict[str, subprocess.Popen[str]]) -> None:
+def terminate_all(processes: dict[str, "subprocess.Popen[str]"]) -> None:
     for name, proc in processes.items():
         if proc.poll() is None:
-            print(f"[stack] stopping {name} (pid={proc.pid})")
+            _log(f"停止 {name} (pid={proc.pid})")
             proc.terminate()
     deadline = time.time() + 8
     for proc in processes.values():
         if proc.poll() is None:
-            timeout = max(0.1, deadline - time.time())
             try:
-                proc.wait(timeout=timeout)
+                proc.wait(timeout=max(0.1, deadline - time.time()))
             except subprocess.TimeoutExpired:
                 proc.kill()
 
 
+# ─── 主逻辑 ───────────────────────────────────────────────────
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run Project Claw core stack")
+    parser = argparse.ArgumentParser(description="Project Claw 核心服务启动器")
     parser.add_argument(
-        "services",
-        nargs="*",
+        "services", nargs="*",
         choices=sorted(SERVICES.keys()),
-        help="Specific services to run. Defaults to signaling + siri.",
+        help="指定要启动的服务（默认: signaling siri）",
     )
+    parser.add_argument("--no-restart", action="store_true", help="子进程崩溃后不自动重启")
     args = parser.parse_args()
 
     selected = args.services or ["signaling", "siri"]
     processes: dict[str, subprocess.Popen[str]] = {}
 
     def _shutdown(*_: object) -> None:
-        terminate_processes(processes)
+        _log("收到退出信号，正在停止所有服务...")
+        terminate_all(processes)
         raise SystemExit(0)
 
     signal.signal(signal.SIGINT, _shutdown)
@@ -87,19 +120,37 @@ def main() -> int:
         signal.signal(signal.SIGTERM, _shutdown)
 
     try:
+        # 先启动 signaling
+        if "signaling" in selected:
+            processes["signaling"] = start_service("signaling")
+            _wait_signaling_ready(timeout=30)
+
+        # 再启动其余服务
         for name in selected:
+            if name == "signaling":
+                continue
             processes[name] = start_service(name)
-        print("[stack] services started, press Ctrl+C to stop")
+
+        _log(f"全部服务已启动: {list(processes.keys())}，按 Ctrl+C 停止")
+
+        # 监控循环
         while True:
-            for name, proc in processes.items():
+            for name in list(processes.keys()):
+                proc = processes[name]
                 code = proc.poll()
                 if code is not None:
-                    print(f"[stack] {name} exited with code {code}")
-                    terminate_processes(processes)
-                    return code
+                    _log(f"{name} 退出 (code={code})")
+                    if args.no_restart:
+                        terminate_all(processes)
+                        return code
+                    else:
+                        _log(f"自动重启 {name}...")
+                        time.sleep(2)
+                        processes[name] = start_service(name)
             time.sleep(1)
+
     except KeyboardInterrupt:
-        terminate_processes(processes)
+        terminate_all(processes)
         return 0
 
 

@@ -1,51 +1,38 @@
+"""
+idempotency_store.py - Project Claw v14.3
+幂等存储（基于 RedisStore 基类重构）
+"""
 from __future__ import annotations
 
-import json
-import time
-from typing import Any
-
-try:
-    import redis
-except Exception:  # pragma: no cover
-    redis = None
+from typing import Any, Optional
+from shared.redis_store import RedisStore
 
 
-class IdempotencyStore:
-    def __init__(self, redis_url: str = "", ttl_seconds: int = 300):
-        self.ttl_seconds = ttl_seconds
-        self._mem: dict[str, tuple[float, dict[str, Any]]] = {}
-        self._redis = None
-        if redis_url and redis is not None:
-            try:
-                self._redis = redis.from_url(redis_url, decode_responses=True)
-                self._redis.ping()
-            except Exception:
-                self._redis = None
+class IdempotencyStore(RedisStore):
+    """
+    幂等键值存储。
+    同一 idempotency_key 在 TTL 内只处理一次。
 
-    def get(self, key: str) -> dict[str, Any] | None:
+    用法：
+        store = IdempotencyStore(redis_url=settings.REDIS_URL)
+        if store.get(key):       # 已处理过
+            return cached_result
+        result = do_work()
+        store.set(key, result)   # 缓存结果
+    """
+
+    def __init__(self, redis_url: str = "", ttl_seconds: int = 300) -> None:
+        super().__init__(namespace="idempotency", redis_url=redis_url, ttl_seconds=ttl_seconds)
+
+    def get(self, key: str) -> Optional[dict[str, Any]]:
         if not key:
             return None
-        if self._redis is not None:
-            raw = self._redis.get(self._k(key))
-            return json.loads(raw) if raw else None
-        self._cleanup_mem()
-        entry = self._mem.get(key)
-        return entry[1] if entry else None
+        return self._get(key)
 
     def set(self, key: str, value: dict[str, Any]) -> None:
         if not key:
             return
-        if self._redis is not None:
-            self._redis.setex(self._k(key), self.ttl_seconds, json.dumps(value, ensure_ascii=False))
-            return
-        self._cleanup_mem()
-        self._mem[key] = (time.time(), value)
+        self._set(key, value)
 
-    def _k(self, key: str) -> str:
-        return f"claw:idempotency:{key}"
-
-    def _cleanup_mem(self) -> None:
-        now = time.time()
-        expired = [k for k, (ts, _) in self._mem.items() if now - ts > self.ttl_seconds]
-        for k in expired:
-            self._mem.pop(k, None)
+    def delete(self, key: str) -> None:
+        self._delete(key)

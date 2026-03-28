@@ -1,59 +1,50 @@
+"""
+agent_profile_store.py - Project Claw v14.3
+Agent 画像存储（基于 RedisStore 基类重构）
+"""
 from __future__ import annotations
 
-import json
 import time
 from typing import Any
-
-try:
-    import redis
-except Exception:  # pragma: no cover
-    redis = None
+from shared.redis_store import RedisStore
 
 
-class AgentProfileStore:
-    def __init__(self, redis_url: str = "", ttl_seconds: int = 86400):
-        self._clients: dict[str, dict[str, Any]] = {}
-        self._merchants: dict[str, dict[str, Any]] = {}
-        self.ttl_seconds = ttl_seconds
-        self._redis = None
-        if redis_url and redis is not None:
-            try:
-                self._redis = redis.from_url(redis_url, decode_responses=True)
-                self._redis.ping()
-            except Exception:
-                self._redis = None
+class AgentProfileStore(RedisStore):
+    """
+    C/B 端 Agent 画像存储。
+    支持 Redis（生产）/ 内存（开发/CI）双模式。
 
+    用法：
+        store = AgentProfileStore(redis_url=settings.REDIS_URL)
+        store.upsert_client("c-001", {"budget_max": 30.0})
+        profile = store.get_client("c-001")
+    """
+
+    def __init__(self, redis_url: str = "", ttl_seconds: int = 86400) -> None:
+        super().__init__(namespace="profile", redis_url=redis_url, ttl_seconds=ttl_seconds)
+
+    # ── C 端 ────────────────────────────────────────────────
     def upsert_client(self, client_id: str, profile: dict[str, Any]) -> dict[str, Any]:
         row = {"client_id": client_id, "profile": profile or {}, "updated_at": time.time()}
-        if self._redis is not None:
-            self._redis.setex(self._k("client", client_id), self.ttl_seconds, json.dumps(row, ensure_ascii=False))
-            return row
-        self._clients[client_id] = row
-        return row
-
-    def upsert_merchant(self, merchant_id: str, profile: dict[str, Any]) -> dict[str, Any]:
-        row = {"merchant_id": merchant_id, "profile": profile or {}, "updated_at": time.time()}
-        if self._redis is not None:
-            self._redis.setex(self._k("merchant", merchant_id), self.ttl_seconds, json.dumps(row, ensure_ascii=False))
-            return row
-        self._merchants[merchant_id] = row
+        self._set(f"client:{client_id}", row)
         return row
 
     def get_client(self, client_id: str) -> dict[str, Any]:
-        if self._redis is not None:
-            raw = self._redis.get(self._k("client", client_id))
-            if raw:
-                return (json.loads(raw) or {}).get("profile", {})
-            return {}
-        return (self._clients.get(client_id) or {}).get("profile", {})
+        row = self._get(f"client:{client_id}")
+        return (row or {}).get("profile", {})
+
+    def delete_client(self, client_id: str) -> None:
+        self._delete(f"client:{client_id}")
+
+    # ── B 端 ────────────────────────────────────────────────
+    def upsert_merchant(self, merchant_id: str, profile: dict[str, Any]) -> dict[str, Any]:
+        row = {"merchant_id": merchant_id, "profile": profile or {}, "updated_at": time.time()}
+        self._set(f"merchant:{merchant_id}", row)
+        return row
 
     def get_merchant(self, merchant_id: str) -> dict[str, Any]:
-        if self._redis is not None:
-            raw = self._redis.get(self._k("merchant", merchant_id))
-            if raw:
-                return (json.loads(raw) or {}).get("profile", {})
-            return {}
-        return (self._merchants.get(merchant_id) or {}).get("profile", {})
+        row = self._get(f"merchant:{merchant_id}")
+        return (row or {}).get("profile", {})
 
-    def _k(self, kind: str, id_: str) -> str:
-        return f"claw:profile:{kind}:{id_}"
+    def delete_merchant(self, merchant_id: str) -> None:
+        self._delete(f"merchant:{merchant_id}")

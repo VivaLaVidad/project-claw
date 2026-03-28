@@ -1,35 +1,47 @@
+"""
+runtime_config_store.py - Project Claw v14.3
+运行时配置存储（基于 RedisStore 基类重构）
+"""
 from __future__ import annotations
 
-import json
 from typing import Any
-
-try:
-    import redis
-except Exception:  # pragma: no cover
-    redis = None
+from shared.redis_store import RedisStore
 
 
-class RuntimeConfigStore:
-    def __init__(self, redis_url: str = "", key: str = "claw:runtime:preference"):
-        self.key = key
-        self._mem: dict[str, Any] = {}
-        self._redis = None
-        if redis_url and redis is not None:
-            try:
-                self._redis = redis.from_url(redis_url, decode_responses=True)
-                self._redis.ping()
-            except Exception:
-                self._redis = None
+class RuntimeConfigStore(RedisStore):
+    """
+    运行时动态配置存储（如商家偏好、A2A 策略参数）。
+    持久化到 Redis，内存降级时进程重启后丢失。
+
+    用法：
+        store = RuntimeConfigStore(redis_url=settings.REDIS_URL)
+        store.save({"fee_rate": 0.01, "max_discount": 0.15})
+        cfg = store.load()
+    """
+
+    def __init__(
+        self,
+        redis_url: str = "",
+        key:       str = "preference",
+    ) -> None:
+        super().__init__(namespace="runtime", redis_url=redis_url, ttl_seconds=0)
+        self._key = key
 
     def load(self) -> dict[str, Any]:
-        if self._redis is not None:
-            raw = self._redis.get(self.key)
-            return json.loads(raw) if raw else {}
-        return dict(self._mem)
+        """加载配置，不存在时返回空 dict。"""
+        return self._get(self._key) or {}
 
     def save(self, data: dict[str, Any]) -> None:
-        payload = data or {}
-        if self._redis is not None:
-            self._redis.set(self.key, json.dumps(payload, ensure_ascii=False))
-            return
-        self._mem = dict(payload)
+        """保存配置（全量覆盖）。"""
+        self._set(self._key, data or {}, ttl=0)
+
+    def patch(self, updates: dict[str, Any]) -> dict[str, Any]:
+        """局部更新配置（merge）。"""
+        current = self.load()
+        current.update(updates)
+        self.save(current)
+        return current
+
+    def delete(self) -> None:
+        """清除配置。"""
+        self._delete(self._key)

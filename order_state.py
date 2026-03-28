@@ -40,9 +40,21 @@ class OrderStore:
         self._lock = threading.Lock()
         self._orders: dict[str, OrderRecord] = {}
 
-    def create_intent(self, intent_id: str, client_id: str, demand_text: str, max_price: float, location: str) -> OrderRecord:
+    def create_intent(
+        self,
+        intent_id:   str,
+        client_id:   str,
+        demand_text: str,
+        max_price:   float,
+        location:    str,
+    ) -> OrderRecord:
         with self._lock:
-            record = OrderRecord(intent_id=intent_id, client_id=client_id, demand_text=demand_text, max_price=max_price, location=location)
+            if intent_id in self._orders:
+                return self._orders[intent_id]  # 幂等：已存在直接返回
+            record = OrderRecord(
+                intent_id=intent_id, client_id=client_id,
+                demand_text=demand_text, max_price=max_price, location=location,
+            )
             self._orders[intent_id] = record
             self._append_event(intent_id, "created", asdict(record))
             return record
