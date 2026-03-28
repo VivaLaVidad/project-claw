@@ -1,4 +1,4 @@
-# Project Claw 完整环境配置脚本 (Windows PowerShell)
+# Project Claw 完整环境配置脚本 (Windows PowerShell) - 修复版
 # 包含：虚拟环境 + 依赖安装 + 数据库初始化 + Redis 安装 + 项目启动
 # 用法：.\complete_setup.ps1
 
@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 
 Write-Host ""
 Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║     🚀 Project Claw 完整环境配置脚本 v1.0                 ║" -ForegroundColor Cyan
+Write-Host "║     🚀 Project Claw 完整环境配置脚本 v2.0                 ║" -ForegroundColor Cyan
 Write-Host "║     包含：venv + 依赖 + 数据库 + Redis + 启动             ║" -ForegroundColor Cyan
 Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
@@ -61,7 +61,9 @@ Write-Host ""
 # 第五步：初始化数据库
 # ═══════════════════════════════════════════════════════════════
 Write-Host "[5/8] 初始化数据库..." -ForegroundColor Yellow
-python << 'PYEOF'
+
+# 创建临时 Python 脚本文件
+$pythonScript = @"
 import sqlite3
 from pathlib import Path
 import sys
@@ -122,12 +124,23 @@ try:
 except Exception as e:
     print(f"✗ 数据库初始化失败: {e}")
     sys.exit(1)
-PYEOF
+"@
+
+# 保存脚本到临时文件
+$tempScript = "$env:TEMP\init_db.py"
+$pythonScript | Out-File -FilePath $tempScript -Encoding UTF8
+
+# 执行脚本
+python $tempScript
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "✗ 数据库初始化失败" -ForegroundColor Red
     exit 1
 }
+
+# 删除临时文件
+Remove-Item $tempScript -Force
+
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════
