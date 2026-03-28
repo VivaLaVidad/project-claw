@@ -155,11 +155,27 @@ with demo_col:
 st.markdown("### 📊 去中心化数据罗盘")
 c1,c2,c3=st.columns(3)
 with c1:
-    st.markdown(f"<div class='mbox'><div class='mlabel'>🟢 活跃龙虾节点</div><div class='mvg'>{st.session_state.online_merchants}</div><div style='font-size:12px;color:rgba(255,255,255,.3);margin-top:8px'></div></div>",unsafe_allow_html=True)
+    st.markdown(f"<div class='mbox'><div class='mlabel'>🟢 活跃龙虾节点</div><div class='mvg'>{st.session_state.online_merchants}</div></div>",unsafe_allow_html=True)
 with c2:
-    st.markdown(f"<div class='mbox'><div class='mlabel'>⚡ 今日砍价次数</div><div class='mvb'>{st.session_state.total_negotiations}</div><div style='font-size:12px;color:rgba(255,255,255,.3);margin-top:8px'></div></div>",unsafe_allow_html=True)
+    st.markdown(f"<div class='mbox'><div class='mlabel'>⚡ 今日砍价次数</div><div class='mvb'>{st.session_state.total_negotiations}</div></div>",unsafe_allow_html=True)
 with c3:
-    st.markdown(f"<div class='mbox'><div class='mlabel'>💰 累计为商家夺回</div><div class='mvr'>¥{st.session_state.total_savings:.0f}</div><div style='font-size:12px;color:rgba(255,255,255,.3);margin-top:8px'></div></div>",unsafe_allow_html=True)
+    st.markdown(f"<div class='mbox'><div class='mlabel'>💰 累计节省金额</div><div class='mvr'>¥{st.session_state.total_savings:.0f}</div></div>",unsafe_allow_html=True)
+
+# ── 资金清算面板（接入 EscrowManager）──────────────────────────
+try:
+    from cloud_server.clearing_service import escrow_manager
+    _summary = escrow_manager.summary()
+    st.markdown("### 💳 资金清算账户（实时）")
+    f1,f2,f3,f4 = st.columns(4)
+    def _fin_box(label, val, color="#30d158"):
+        return f"<div class='mbox'><div class='mlabel'>{label}</div><div style='font-size:36px;font-weight:800;color:{color};line-height:1'>¥{val:.2f}</div></div>"
+    with f1: st.markdown(_fin_box("💰 已结算总额",     _summary["total_settled_yuan"]),  unsafe_allow_html=True)
+    with f2: st.markdown(_fin_box("🏪 商家到账(99%)",  _summary["merchant_revenue_yuan"]), unsafe_allow_html=True)
+    with f3: st.markdown(_fin_box("🏦 平台抽佣(1%)",   _summary["platform_revenue_yuan"], "#ff9f0a"), unsafe_allow_html=True)
+    with f4: st.markdown(_fin_box("🔒 冻结中",         _summary["total_frozen_yuan"],    "#5ac8fa"), unsafe_allow_html=True)
+    st.caption(f"📋 托管统计 — 结算:{_summary['settled_count']} | 冻结:{_summary['frozen_count']} | 退款:{_summary['refunded_count']} | 失败:{_summary['failed_count']}")
+except Exception:
+    pass
 
 map_col,log_col=st.columns([1,1])
 with map_col:
