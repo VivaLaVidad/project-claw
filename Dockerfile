@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -25,12 +25,10 @@ RUN mkdir -p /app/logs
 # 设置环境变量
 ENV PYTHONUNBUFFERED=1
 ENV DEEPSEEK_API_KEY=""
-ENV FEISHU_APP_ID=""
-ENV FEISHU_APP_SECRET=""
-ENV OPENCLAW_CONFIG_PATH="/app/openclaw_config"
+ENV REDIS_URL=""
 
 # 暴露端口
-EXPOSE 8000
+EXPOSE 8765
 
 # 启动命令
-CMD ["python", "lobster_with_openclaw.py"]
+CMD ["uvicorn", "cloud_server.api_server_pro:app", "--host", "0.0.0.0", "--port", "8765"]
