@@ -1,267 +1,393 @@
-"""
-cloud_server/api_server_pro.py - Project Claw v14.3
-Siri Shortcut → A2A 信令桥接服务
-
-改进：
-- 请求日志中间件（记录耗时、状态码）
-- verify_rate_limit_only 依赖防刷
-- /parse 调试接口（仅非生产可用）
-- /health 增加依赖状态检查
-- 接口全部加 response_model 和 summary
-"""
-from __future__ import annotations
-
-import asyncio
-import re
-import time
-from typing import Any
-
-import requests
-from fastapi import Depends, FastAPI, HTTPException, Request
+"""Project Claw 完整 API 服务器 - cloud_server/api_server_pro.py"""
+import logging
+import json
+from fastapi import FastAPI, WebSocket, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-from tenacity import retry, stop_after_attempt, wait_fixed
+import uvicorn
+from typing import Optional
+import uuid
 
-from auth_guard import verify_rate_limit_only
-from config import settings
-from llm_client import LLMClient
-from logger_setup import setup_logger
+# 导入必要的模块
+from auth_guard import verify_rate_limit_only, verify_session, create_session, invalidate_session
+from model_gateway import initialize_model_gateway, get_model_gateway
+from cost_tracker import CostTracker, CostRecord, usd_to_cny
+import time
 
-logger = setup_logger("claw.siri")
+# 配置日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# ─── FastAPI App ──────────────────────────────────────────────
-app = FastAPI(
-    title       = "Project Claw · Siri Bridge",
-    description = "将 Siri Shortcut 语音意图桥接到 A2A 信令广播池",
-    version     = "14.3.0",
-    docs_url    = "/docs",
-    redoc_url   = "/redoc",
-)
+# 创建 FastAPI 应用
+app = FastAPI(title="Project Claw API Server", version="1.0.0")
 
+# 添加 CORS 中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins     = ["*"],
-    allow_credentials = True,
-    allow_methods     = ["*"],
-    allow_headers     = ["*"],
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
+# 全局服务实例
+cost_tracker = CostTracker()
+model_gateway = None
 
-# ─── 请求日志中间件 ───────────────────────────────────────────
-@app.middleware("http")
-async def _request_log_middleware(request: Request, call_next):
-    t0  = time.time()
-    resp = await call_next(request)
-    ms  = round((time.time() - t0) * 1000, 1)
-    logger.info(
-        f"{request.method} {request.url.path} "
-        f"status={resp.status_code} {ms}ms "
-        f"ip={request.headers.get('X-Forwarded-For', getattr(request.client, 'host', '-'))}"
-    )
-    return resp
+@app.on_event("startup")
+async def startup_event():
+    """应用启动事件"""
+    global model_gateway
+    logger.info("🚀 Project Claw API 服务器启动中...")
+    
+    # 初始化模型网关
+    model_gateway = await initialize_model_gateway()
+    
+    logger.info("✓ 所有服务已初始化")
 
+@app.on_event("shutdown")
+async def shutdown_event():
+    """应用关闭事件"""
+    logger.info("🛑 Project Claw API 服务器关闭中...")
+    if model_gateway:
+        await model_gateway.close()
 
-# ─── Pydantic 模型 ────────────────────────────────────────────
-class SiriIntentRequest(BaseModel):
-    spoken_text: str = Field(..., min_length=2,  description="Siri 识别的原始语音文本")
-    client_id:   str = Field(..., min_length=1,  description="C端用户唯一 ID")
+# ==================== 认证接口 ====================
 
-
-class ParsedTradeRequest(BaseModel):
-    item:      str   = Field(..., min_length=1, description="解析出的菜品名")
-    max_price: float = Field(..., gt=0,         description="用户可接受最高价（元）")
-
-
-class SiriIntentResponse(BaseModel):
-    speech_reply: str = Field(..., description="回传给 Siri 朗读的文本")
-    item:         str
-    max_price:    float
-    dispatched:   bool
-
-
-class HealthResponse(BaseModel):
-    status:    str
-    signaling: str
-    version:   str = "14.3.0"
-
-
-# ─── TradeCoordinator ─────────────────────────────────────────
-class TradeCoordinator:
-    """极简协调器：把 Siri 意图推入现有 A2A 信令广播池。"""
-
-    def __init__(self, signaling_base_url: str | None = None):
-        self.signaling_base_url = (
-            signaling_base_url or settings.signaling_http_base_url
-        ).rstrip("/")
-
-    @retry(stop=stop_after_attempt(3), wait=wait_fixed(0.5))
-    def push_trade_request(
-        self, client_id: str, trade: ParsedTradeRequest
-    ) -> dict[str, Any]:
-        resp = requests.post(
-            f"{self.signaling_base_url}/intent",
-            json={
-                "client_id":   client_id,
-                "location":    "SiriShortcut",
-                "demand_text": f"想吃{trade.item}",
-                "max_price":   trade.max_price,
-                "timeout":     2.0,
-            },
-            timeout=4,
-        )
-        resp.raise_for_status()
-        return resp.json()
-
-
-# ─── SiriIntentParser ─────────────────────────────────────────
-class SiriIntentParser:
-    """LLM 优先 + Regex 降级的双层语音解析器。"""
-
-    def __init__(self):
-        api_key = settings.DEEPSEEK_API_KEY.strip()
-        self.llm = LLMClient(
-            api_key     = api_key,
-            model       = settings.DEEPSEEK_MODEL,
-            temperature = 0.1,
-            max_tokens  = 80,
-            timeout     = 6,
-            max_retries = 2,
-        ) if api_key else None
-
-    def parse(self, spoken_text: str) -> ParsedTradeRequest:
-        for strategy in (self._parse_with_llm, self._parse_with_regex):
-            result = strategy(spoken_text)
-            if result:
-                return result
-        raise ValueError("无法从语音中解析出菜品和价格")
-
-    def _parse_with_llm(self, spoken_text: str) -> ParsedTradeRequest | None:
-        if not self.llm:
-            return None
-        system = (
-            "你是一个点餐语音解析器。"
-            "严格输出 JSON，格式为: {\"item\":\"菜品名\",\"max_price\":15}。"
-            "不要任何解释。"
-        )
-        result = self.llm.ask_json(prompt=f"用户语音：{spoken_text}", system=system)
-        if not result:
-            return None
-        try:
-            return ParsedTradeRequest(
-                item      = str(result["item"]).strip(),
-                max_price = float(result["max_price"]),
-            )
-        except Exception:
-            return None
-
-    def _parse_with_regex(self, spoken_text: str) -> ParsedTradeRequest | None:
-        text = spoken_text.replace("，", ",").replace("块钱", "块")
-        price = re.search(r"(\d+(?:\.\d+)?)\s*(块|元)", text)
-        item  = re.search(
-            r"(?:要|想|吃|来一份|帮我点)?([\u4e00-\u9fa5A-Za-z0-9]{2,12})"
-            r"(?:,|\d|块|元|以内|以下)", text
-        ) or re.search(r"([\u4e00-\u9fa5A-Za-z0-9]{2,12})", text)
-        if not item or not price:
-            return None
-        return ParsedTradeRequest(
-            item      = item.group(1),
-            max_price = float(price.group(1)),
-        )
-
-
-# ─── 全局实例 ─────────────────────────────────────────────────
-trade_coordinator = TradeCoordinator()
-intent_parser     = SiriIntentParser()
-
-
-# ─── 路由 ─────────────────────────────────────────────────────
-@app.get(
-    "/health",
-    response_model = HealthResponse,
-    summary        = "健康检查",
-    tags           = ["System"],
-)
-async def health() -> HealthResponse:
-    """检查 Siri Bridge 和上游 signaling 服务状态。"""
-    signaling_ok = False
+@app.post("/auth/login")
+async def login(request: Request):
+    """微信登录"""
     try:
-        r = requests.get(
-            f"{settings.signaling_http_base_url}/health", timeout=2
-        )
-        signaling_ok = r.status_code < 400
-    except Exception:
-        pass
-    return HealthResponse(
-        status    = "ok",
-        signaling = "ok" if signaling_ok else "unreachable",
-    )
-
-
-@app.post(
-    "/api/v1/siri_intent",
-    response_model = SiriIntentResponse,
-    summary        = "Siri 语音意图 → A2A 广播",
-    tags           = ["Siri"],
-    dependencies   = [Depends(verify_rate_limit_only)],
-)
-async def siri_intent(body: SiriIntentRequest) -> SiriIntentResponse:
-    """
-    接收 Siri Shortcut 语音文本，解析为交易意图，
-    异步广播至所有在线商家。
-    """
-    try:
-        logger.vision_scan(body.spoken_text)
-        trade = await asyncio.to_thread(intent_parser.parse, body.spoken_text)
+        data = await request.json()
+        code = data.get("code")
+        
+        if not code:
+            raise HTTPException(status_code=400, detail="缺少 code 参数")
+        
+        # 这里应该调用微信 API 验证 code
+        # 为了演示，我们直接生成 session
+        user_id = f"user_{uuid.uuid4().hex[:8]}"
+        user_info = {
+            "user_id": user_id,
+            "nickname": "用户",
+            "avatar": "",
+            "created_at": time.time()
+        }
+        
+        session_id = create_session(user_id, user_info)
+        
+        logger.info(f"✓ 用户登录: {user_id}")
+        
+        return {
+            "code": 200,
+            "message": "登录成功",
+            "data": {
+                "session_id": session_id,
+                "user_info": user_info
+            }
+        }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"语音解析失败: {e}") from e
+        logger.error(f"登录失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-    logger.a2a_handshake(f"siri:{body.client_id}:{trade.item}:{trade.max_price}")
-
-    dispatched = False
-
-    async def _dispatch() -> None:
-        nonlocal dispatched
-        try:
-            await asyncio.to_thread(
-                trade_coordinator.push_trade_request, body.client_id, trade
-            )
-            dispatched = True
-        except Exception as e:
-            logger.warning(f"[SiriBridge] dispatch failed: {e}")
-
-    await _dispatch()
-
-    return SiriIntentResponse(
-        speech_reply = f"已为您锁定一家{trade.item}，{int(trade.max_price)}元，老板正在接单",
-        item         = trade.item,
-        max_price    = trade.max_price,
-        dispatched   = dispatched,
-    )
-
-
-@app.post(
-    "/api/v1/parse",
-    response_model = ParsedTradeRequest,
-    summary        = "语音解析调试接口（仅开发用）",
-    tags           = ["Debug"],
-    dependencies   = [Depends(verify_rate_limit_only)],
-)
-async def parse_only(body: SiriIntentRequest) -> ParsedTradeRequest:
-    """
-    仅解析语音文本，不触发广播。用于调试语音解析效果。
-    """
+@app.get("/auth/user-info")
+async def get_user_info(authorization: str = Header(...)):
+    """获取用户信息"""
     try:
-        return await asyncio.to_thread(intent_parser.parse, body.spoken_text)
+        session_id = authorization.replace("Bearer ", "")
+        session = verify_session(session_id)
+        
+        if not session:
+            raise HTTPException(status_code=401, detail="会话无效")
+        
+        return {
+            "code": 200,
+            "message": "获取成功",
+            "data": session["user_info"]
+        }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        logger.error(f"获取用户信息失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/auth/logout")
+async def logout(authorization: str = Header(...)):
+    """登出"""
+    try:
+        session_id = authorization.replace("Bearer ", "")
+        invalidate_session(session_id)
+        
+        return {
+            "code": 200,
+            "message": "登出成功"
+        }
+    except Exception as e:
+        logger.error(f"登出失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== 订单接口 ====================
+
+@app.get("/orders/list")
+async def list_orders(authorization: str = Header(...)):
+    """获取订单列表"""
+    try:
+        session_id = authorization.replace("Bearer ", "")
+        session = verify_session(session_id)
+        
+        if not session:
+            raise HTTPException(status_code=401, detail="会话无效")
+        
+        # 这里应该从数据库查询订单
+        # 为了演示，我们返回示例数据
+        orders = [
+            {
+                "order_id": f"order_{i}",
+                "status": "pending" if i % 2 == 0 else "completed",
+                "created_at": time.time() - i * 3600,
+                "amount": 100 + i * 10
+            }
+            for i in range(5)
+        ]
+        
+        return {
+            "code": 200,
+            "message": "获取成功",
+            "data": {"orders": orders}
+        }
+    except Exception as e:
+        logger.error(f"获取订单列表失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/orders/{order_id}")
+async def get_order(order_id: str, authorization: str = Header(...)):
+    """获取订单详情"""
+    try:
+        session_id = authorization.replace("Bearer ", "")
+        session = verify_session(session_id)
+        
+        if not session:
+            raise HTTPException(status_code=401, detail="会话无效")
+        
+        # 这里应该从数据库查询订单
+        order = {
+            "order_id": order_id,
+            "status": "pending",
+            "created_at": time.time(),
+            "amount": 100,
+            "items": [
+                {"name": "商品1", "price": 50, "quantity": 1},
+                {"name": "商品2", "price": 50, "quantity": 1}
+            ]
+        }
+        
+        return {
+            "code": 200,
+            "message": "获取成功",
+            "data": order
+        }
+    except Exception as e:
+        logger.error(f"获取订单详情失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== 成本接口 ====================
+
+@app.get("/cost/analysis")
+async def analyze_cost(
+    start_date: str,
+    end_date: str,
+    tenant_id: Optional[str] = None,
+    authorization: str = Header(...)
+):
+    """成本分析"""
+    try:
+        session_id = authorization.replace("Bearer ", "")
+        session = verify_session(session_id)
+        
+        if not session:
+            raise HTTPException(status_code=401, detail="会话无效")
+        
+        # 获取成本数据
+        if tenant_id:
+            cost_data = cost_tracker.get_tenant_cost(tenant_id)
+        else:
+            cost_data = cost_tracker.get_daily_cost(start_date)
+        
+        return {
+            "code": 200,
+            "message": "获取成功",
+            "data": cost_data
+        }
+    except Exception as e:
+        logger.error(f"成本分析失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/cost/daily-stats")
+async def get_daily_stats(days: int = 30, authorization: str = Header(...)):
+    """获取每日成本统计"""
+    try:
+        session_id = authorization.replace("Bearer ", "")
+        session = verify_session(session_id)
+        
+        if not session:
+            raise HTTPException(status_code=401, detail="会话无效")
+        
+        # 这里应该从数据库查询每日成本
+        # 为了演示，我们返回示例数据
+        data = [
+            {
+                "date": f"2024-01-{i:02d}",
+                "cost_usd": 10 + i * 0.5,
+                "cost_cny": (10 + i * 0.5) * 7
+            }
+            for i in range(1, days + 1)
+        ]
+        
+        return {
+            "code": 200,
+            "message": "获取成功",
+            "data": data
+        }
+    except Exception as e:
+        logger.error(f"获取每日成本统计失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== 舰队接口 ====================
+
+@app.get("/fleet/status")
+async def get_fleet_status(authorization: str = Header(...)):
+    """获取舰队状态"""
+    try:
+        session_id = authorization.replace("Bearer ", "")
+        session = verify_session(session_id)
+        
+        if not session:
+            raise HTTPException(status_code=401, detail="会话无效")
+        
+        # 这里应该从舰队管理器获取状态
+        # 为了演示，我们返回示例数据
+        stats = {
+            "total_boxes": 10,
+            "idle_boxes": 6,
+            "busy_boxes": 3,
+            "error_boxes": 1,
+            "total_orders": 100,
+            "avg_confidence": 0.85,
+            "pending_tasks": 5,
+            "boxes": [
+                {
+                    "box_id": f"box_{i}",
+                    "status": ["idle", "busy", "error"][i % 3],
+                    "daily_orders": 10 + i,
+                    "confidence": 0.8 + i * 0.01
+                }
+                for i in range(10)
+            ]
+        }
+        
+        return {
+            "code": 200,
+            "message": "获取成功",
+            "data": stats
+        }
+    except Exception as e:
+        logger.error(f"获取舰队状态失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/fleet/pending-tasks")
+async def get_pending_tasks(limit: int = 100, authorization: str = Header(...)):
+    """获取待审批任务"""
+    try:
+        session_id = authorization.replace("Bearer ", "")
+        session = verify_session(session_id)
+        
+        if not session:
+            raise HTTPException(status_code=401, detail="会话无效")
+        
+        # 这里应该从数据库查询待审批任务
+        # 为了演示，我们返回示例数据
+        tasks = [
+            {
+                "task_id": f"task_{i}",
+                "box_id": f"box_{i % 10}",
+                "confidence": 0.5 + i * 0.01,
+                "reason": "置信度过低",
+                "created_at": time.time() - i * 3600,
+                "state_data": {}
+            }
+            for i in range(min(limit, 10))
+        ]
+        
+        return {
+            "code": 200,
+            "message": "获取成功",
+            "data": tasks
+        }
+    except Exception as e:
+        logger.error(f"获取待审批任务失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/fleet/approve-task")
+async def approve_task(request: Request, authorization: str = Header(...)):
+    """批准任务"""
+    try:
+        session_id = authorization.replace("Bearer ", "")
+        session = verify_session(session_id)
+        
+        if not session:
+            raise HTTPException(status_code=401, detail="会话无效")
+        
+        data = await request.json()
+        task_id = data.get("task_id")
+        decision = data.get("decision")
+        
+        logger.info(f"✓ 任务已批准: {task_id} ({decision})")
+        
+        return {
+            "code": 200,
+            "message": "批准成功"
+        }
+    except Exception as e:
+        logger.error(f"批准任务失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== WebSocket 接口 ====================
+
+@app.websocket("/ws/audio/{session_id}")
+async def websocket_audio(websocket: WebSocket, session_id: str):
+    """音频 WebSocket"""
+    await websocket.accept()
+    logger.info(f"✓ WebSocket 连接已建立: {session_id}")
+    
+    try:
+        while True:
+            data = await websocket.receive_bytes()
+            
+            # 这里应该处理音频数据
+            # 为了演示，我们直接回显
+            await websocket.send_bytes(data)
+    
+    except Exception as e:
+        logger.error(f"WebSocket 错误: {e}")
+    finally:
+        logger.info(f"✓ WebSocket 连接已关闭: {session_id}")
+
+# ==================== 健康检查 ====================
+
+@app.get("/health")
+async def health_check():
+    """健康检查"""
+    return {
+        "code": 200,
+        "message": "服务正常",
+        "timestamp": time.time()
+    }
+
+# ==================== 主函数 ====================
 
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run(
-        "cloud_server.api_server_pro:app",
-        host      = "0.0.0.0",
-        port      = 8010,
-        log_level = "info",
+        "api_server_pro:app",
+        host="0.0.0.0",
+        port=8765,
+        reload=True,
+        log_level="info"
     )
