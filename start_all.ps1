@@ -1,128 +1,285 @@
-# start_all.ps1 - Project Claw 一键启动脚本 v1.1
-# 启动所有服务：signaling + siri + edge_box + 微信开发者工具
-# 修复：使用 $process_pid 替代系统保留变量 $pid
+# Project Claw 完整一键启动脚本 v2.0 (Windows PowerShell)
+# 用法：.\start_all.ps1
+# 功能：一键启动所有服务（后端 + 大屏 + Redis + 小程序）
 
 param(
-    [switch]$NoWechat  # 不启动微信开发者工具
+    [switch]$Backend,
+    [switch]$Dashboard,
+    [switch]$Redis,
+    [switch]$MiniProgram,
+    [switch]$All
 )
 
-$ROOT = Split-Path -Parent $MyInvocation.MyCommand.Path
-$PYTHON = 'D:\Python1\python.exe'
+$ErrorActionPreference = "Stop"
+$projectPath = "d:\桌面\Project Claw"
 
-Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║         Project Claw 一键启动 v1.1                        ║" -ForegroundColor Cyan
-Write-Host "║  启动服务：signaling + siri + edge_box + 微信开发者工具   ║" -ForegroundColor Cyan
-Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
-Write-Host ""
+# ═══════════════════════════════════════════════════════════════
+# 显示菜单
+# ═══════════════════════════════════════════════════════════════
 
-# 检查 Python
-if (-not (Test-Path $PYTHON)) {
-    $PYTHON = (Get-Command python -ErrorAction SilentlyContinue).Source
-    if (-not $PYTHON) {
-        Write-Host "❌ 未找到 Python，请先安装 Python 3.11+" -ForegroundColor Red
+function Show-Menu {
+    Write-Host ""
+    Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
+    Write-Host "║     🚀 Project Claw 一键启动脚本 v2.0                     ║" -ForegroundColor Cyan
+    Write-Host "║     启动所有服务：后端 + 大屏 + Redis + 小程序            ║" -ForegroundColor Cyan
+    Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "选择启动模式：" -ForegroundColor Yellow
+    Write-Host "  1. 🚀 启动所有服务（推荐）" -ForegroundColor Green
+    Write-Host "  2. 🔧 仅启动后端 API" -ForegroundColor Green
+    Write-Host "  3. 📊 仅启动融资路演大屏" -ForegroundColor Green
+    Write-Host "  4. 💾 仅启动 Redis" -ForegroundColor Green
+    Write-Host "  5. 📱 仅启动小程序" -ForegroundColor Green
+    Write-Host "  6. 🔄 启动后端 + 大屏 + Redis" -ForegroundColor Green
+    Write-Host "  0. ❌ 退出" -ForegroundColor Red
+    Write-Host ""
+}
+
+# ═══════════════════════════════════════════════════════════════
+# 验证环境
+# ═══════════════════════════════════════════════════════════════
+
+function Verify-Environment {
+    Write-Host "[验证] 检查项目环境..." -ForegroundColor Yellow
+    
+    if (-not (Test-Path $projectPath)) {
+        Write-Host "✗ 项目目录不存在: $projectPath" -ForegroundColor Red
         exit 1
     }
-}
-Write-Host "✓ Python: $PYTHON" -ForegroundColor Green
-
-# 清理占用端口
-Write-Host ""
-Write-Host "🔧 清理占用端口..." -ForegroundColor Yellow
-$ports = @(8765, 8010)
-foreach ($port in $ports) {
-    $result = netstat -ano | Select-String ":$port " | Select-Object -First 1
-    if ($result) {
-        $process_pid = $result -split '\s+' | Select-Object -Last 1
-        taskkill /F /PID $process_pid 2>$null | Out-Null
-        Write-Host "  ✓ 已释放端口 $port (PID=$process_pid)" -ForegroundColor Green
+    Write-Host "✓ 项目目录存在" -ForegroundColor Green
+    
+    if (-not (Test-Path "$projectPath\venv")) {
+        Write-Host "✗ 虚拟环境不存在" -ForegroundColor Red
+        exit 1
     }
-}
-Start-Sleep -Seconds 1
-
-# 启动 signaling + siri
-Write-Host ""
-Write-Host "🚀 启动 signaling + siri..." -ForegroundColor Cyan
-$signaling_cmd = "cd '$ROOT'; python run_stack.py signaling siri"
-$signaling_window = New-Object System.Diagnostics.ProcessStartInfo
-$signaling_window.FileName = "powershell.exe"
-$signaling_window.Arguments = "-NoExit", "-Command", $signaling_cmd
-$signaling_window.UseShellExecute = $true
-$signaling_window.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Normal
-$signaling_proc = [System.Diagnostics.Process]::Start($signaling_window)
-Write-Host "  ✓ signaling + siri 已启动 (PID=$($signaling_proc.Id))" -ForegroundColor Green
-Write-Host "  📍 signaling: http://127.0.0.1:8765" -ForegroundColor Gray
-Write-Host "  📍 siri:      http://127.0.0.1:8010" -ForegroundColor Gray
-
-# 等待 signaling 就绪
-Write-Host ""
-Write-Host "⏳ 等待 signaling 就绪..." -ForegroundColor Yellow
-$max_wait = 30
-$waited = 0
-while ($waited -lt $max_wait) {
-    try {
-        $health = Invoke-WebRequest -Uri "http://127.0.0.1:8765/health" -TimeoutSec 2 -ErrorAction SilentlyContinue
-        if ($health.StatusCode -eq 200) {
-            Write-Host "  ✓ signaling 已就绪" -ForegroundColor Green
-            break
-        }
-    } catch {}
-    Start-Sleep -Seconds 1
-    $waited++
-}
-if ($waited -ge $max_wait) {
-    Write-Host "  ⚠️  signaling 启动超时，继续启动其他服务..." -ForegroundColor Yellow
-}
-
-# 启动 edge_box (B端 Agent)
-Write-Host ""
-Write-Host "🤖 启动 B端 Agent (edge_box)..." -ForegroundColor Cyan
-$edge_cmd = "cd '$ROOT'; .\start_edge.ps1"
-$edge_window = New-Object System.Diagnostics.ProcessStartInfo
-$edge_window.FileName = "powershell.exe"
-$edge_window.Arguments = "-NoExit", "-Command", $edge_cmd
-$edge_window.UseShellExecute = $true
-$edge_window.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Normal
-$edge_proc = [System.Diagnostics.Process]::Start($edge_window)
-Write-Host "  ✓ B端 Agent 已启动 (PID=$($edge_proc.Id))" -ForegroundColor Green
-Write-Host "  📍 WS: ws://127.0.0.1:8765/ws/a2a/merchant/box-001" -ForegroundColor Gray
-
-# 启动微信开发者工具
-if (-not $NoWechat) {
+    Write-Host "✓ 虚拟环境存在" -ForegroundColor Green
+    
     Write-Host ""
-    Write-Host "📱 启动微信开发者工具..." -ForegroundColor Cyan
-    $wechat_path = "C:\Program Files (x86)\Tencent\微信web开发者工具\cli.exe"
-    if (Test-Path $wechat_path) {
-        & $wechat_path open --project "$ROOT\miniprogram" 2>$null
-        Write-Host "  ✓ 微信开发者工具已启动" -ForegroundColor Green
-        Write-Host "  📍 小程序: $ROOT\miniprogram" -ForegroundColor Gray
-    } else {
-        Write-Host "  ⚠️  未找到微信开发者工具，请手动打开" -ForegroundColor Yellow
-        Write-Host "  📍 下载: https://developers.weixin.qq.com/miniprogram/dev/devtools/download.html" -ForegroundColor Gray
-        Write-Host "  📍 导入项目: $ROOT\miniprogram" -ForegroundColor Gray
+}
+
+# ═══════════════════════════════════════════════════════════════
+# 启动后端 API
+# ═══════════════════════════════════════════════════════════════
+
+function Start-Backend {
+    Write-Host "[启动] 后端 API 服务..." -ForegroundColor Yellow
+    Write-Host "命令：python -m uvicorn cloud_server.api_server_pro:app --host 0.0.0.0 --port 8765 --reload" -ForegroundColor Cyan
+    Write-Host ""
+    
+    Start-Process cmd -ArgumentList "/k cd /d $projectPath && venv\Scripts\activate.bat && python -m uvicorn cloud_server.api_server_pro:app --host 0.0.0.0 --port 8765 --reload" -WindowStyle Normal
+    
+    Start-Sleep -Seconds 3
+    Write-Host "✓ 后端 API 已启动（端口 8765）" -ForegroundColor Green
+    Write-Host "  访问：http://localhost:8765/docs" -ForegroundColor Gray
+    Write-Host ""
+}
+
+# ═══════════════════════════════════════════════════════════════
+# 启动融资路演大屏
+# ═══════════════════════════════════════════════════════════════
+
+function Start-Dashboard {
+    Write-Host "[启动] 融资路演大屏..." -ForegroundColor Yellow
+    Write-Host "命令：streamlit run cloud_server/god_dashboard.py --server.port 8501" -ForegroundColor Cyan
+    Write-Host ""
+    
+    Start-Process cmd -ArgumentList "/k cd /d $projectPath && venv\Scripts\activate.bat && streamlit run cloud_server/god_dashboard.py --server.port 8501" -WindowStyle Normal
+    
+    Start-Sleep -Seconds 3
+    Write-Host "✓ 融资路演大屏已启动（端口 8501）" -ForegroundColor Green
+    Write-Host "  访问：http://localhost:8501" -ForegroundColor Gray
+    Write-Host ""
+}
+
+# ═══════════════════════════════════════════════════════════════
+# 启动 Redis
+# ═══════════════════════════════════════════════════════════════
+
+function Start-Redis {
+    Write-Host "[启动] Redis..." -ForegroundColor Yellow
+    Write-Host "命令：docker run -d -p 6379:6379 redis:latest" -ForegroundColor Cyan
+    Write-Host ""
+    
+    # 检查 Docker
+    try {
+        $dockerVersion = docker --version 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            # 检查 Redis 容器是否已运行
+            $redisRunning = docker ps --format "table {{.Names}}" | Select-String "redis"
+            
+            if ($redisRunning) {
+                Write-Host "✓ Redis 容器已在运行" -ForegroundColor Green
+            } else {
+                docker run -d -p 6379:6379 redis:latest | Out-Null
+                Start-Sleep -Seconds 2
+                Write-Host "✓ Redis 容器已启动（端口 6379）" -ForegroundColor Green
+            }
+        }
+    } catch {
+        Write-Host "✗ Docker 未安装或未运行" -ForegroundColor Red
+        Write-Host "  提示：请先安装 Docker Desktop" -ForegroundColor Yellow
+    }
+    Write-Host ""
+}
+
+# ═══════════════════════════════════════════════════════════════
+# 启动小程序
+# ═══════════════════════════════════════════════════════════════
+
+function Start-MiniProgram {
+    Write-Host "[启动] 微信小程序..." -ForegroundColor Yellow
+    Write-Host "命令：打开微信开发者工具" -ForegroundColor Cyan
+    Write-Host ""
+    
+    Write-Host "请手动执行以下步骤：" -ForegroundColor Yellow
+    Write-Host "  1. 打开微信开发者工具" -ForegroundColor White
+    Write-Host "  2. 打开项目：$projectPath\miniprogram" -ForegroundColor White
+    Write-Host "  3. 点击'编译'或按 Ctrl+Shift+R" -ForegroundColor White
+    Write-Host "  4. 在模拟器中预览" -ForegroundColor White
+    Write-Host ""
+    Write-Host "✓ 小程序启动说明已显示" -ForegroundColor Green
+    Write-Host ""
+}
+
+# ═══════════════════════════════════════════════════════════════
+# 显示启动完成信息
+# ═══════════════════════════════════════════════════════════════
+
+function Show-Completion {
+    param(
+        [string[]]$Services
+    )
+    
+    Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Green
+    Write-Host "║     ✅ 服务启动完成！                                     ║" -ForegroundColor Green
+    Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Green
+    Write-Host ""
+    
+    Write-Host "📍 已启动的服务：" -ForegroundColor Cyan
+    foreach ($service in $Services) {
+        Write-Host "  ✓ $service" -ForegroundColor Green
+    }
+    Write-Host ""
+    
+    Write-Host "📍 访问地址：" -ForegroundColor Cyan
+    if ($Services -contains "后端 API") {
+        Write-Host "  • 后端 API: http://localhost:8765" -ForegroundColor White
+        Write-Host "  • API 文档: http://localhost:8765/docs" -ForegroundColor White
+    }
+    if ($Services -contains "融资路演大屏") {
+        Write-Host "  • 融资路演大屏: http://localhost:8501" -ForegroundColor White
+    }
+    if ($Services -contains "Redis") {
+        Write-Host "  • Redis: localhost:6379" -ForegroundColor White
+    }
+    if ($Services -contains "小程序") {
+        Write-Host "  • 小程序: 微信开发者工具模拟器" -ForegroundColor White
+    }
+    Write-Host ""
+    
+    Write-Host "🛑 停止服务：" -ForegroundColor Cyan
+    Write-Host "  • 关闭对应的命令行窗口" -ForegroundColor Gray
+    Write-Host "  • 或在 PowerShell 中运行：Stop-Process -Name python -Force" -ForegroundColor Gray
+    Write-Host ""
+}
+
+# ═══════════════════════════════════════════════════════════════
+# 主程序
+# ═══════════════════════════════════════════════════════════════
+
+function Main {
+    # 验证环境
+    Verify-Environment
+    
+    # 如果指定了参数，直接启动
+    if ($All) {
+        Write-Host "启动所有服务..." -ForegroundColor Green
+        Start-Backend
+        Start-Dashboard
+        Start-Redis
+        Start-MiniProgram
+        Show-Completion @("后端 API", "融资路演大屏", "Redis", "小程序")
+        return
+    }
+    
+    if ($Backend -or $Dashboard -or $Redis -or $MiniProgram) {
+        $services = @()
+        if ($Backend) { Start-Backend; $services += "后端 API" }
+        if ($Dashboard) { Start-Dashboard; $services += "融资路演大屏" }
+        if ($Redis) { Start-Redis; $services += "Redis" }
+        if ($MiniProgram) { Start-MiniProgram; $services += "小程序" }
+        Show-Completion $services
+        return
+    }
+    
+    # 显示菜单
+    while ($true) {
+        Show-Menu
+        $choice = Read-Host "请选择 (0-6)"
+        
+        $services = @()
+        
+        switch ($choice) {
+            "1" {
+                Write-Host ""
+                Start-Backend
+                Start-Dashboard
+                Start-Redis
+                Start-MiniProgram
+                $services = @("后端 API", "融资路演大屏", "Redis", "小程序")
+                Show-Completion $services
+                break
+            }
+            "2" {
+                Write-Host ""
+                Start-Backend
+                $services = @("后端 API")
+                Show-Completion $services
+                break
+            }
+            "3" {
+                Write-Host ""
+                Start-Dashboard
+                $services = @("融资路演大屏")
+                Show-Completion $services
+                break
+            }
+            "4" {
+                Write-Host ""
+                Start-Redis
+                $services = @("Redis")
+                Show-Completion $services
+                break
+            }
+            "5" {
+                Write-Host ""
+                Start-MiniProgram
+                $services = @("小程序")
+                Show-Completion $services
+                break
+            }
+            "6" {
+                Write-Host ""
+                Start-Backend
+                Start-Dashboard
+                Start-Redis
+                $services = @("后端 API", "融资路演大屏", "Redis")
+                Show-Completion $services
+                break
+            }
+            "0" {
+                Write-Host "退出脚本" -ForegroundColor Yellow
+                exit 0
+            }
+            default {
+                Write-Host "无效的选择，请重试" -ForegroundColor Red
+                continue
+            }
+        }
+        
+        break
     }
 }
 
-# 启动完成
-Write-Host ""
-Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Green
-Write-Host "║                    ✅ 全部服务已启动                       ║" -ForegroundColor Green
-Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Green
-Write-Host ""
-Write-Host "📊 服务状态：" -ForegroundColor Cyan
-Write-Host "  • signaling (信令服务器)  → http://127.0.0.1:8765" -ForegroundColor Gray
-Write-Host "  • siri (LLM API)          → http://127.0.0.1:8010" -ForegroundColor Gray
-Write-Host "  • edge_box (B端Agent)     → ws://127.0.0.1:8765/ws/a2a/merchant/box-001" -ForegroundColor Gray
-Write-Host "  • 小程序 (C端/B端UI)      → 微信开发者工具" -ForegroundColor Gray
-Write-Host ""
-Write-Host "🔗 逻辑链路：" -ForegroundColor Cyan
-Write-Host "  C端小程序 → POST /intent → signaling:8765" -ForegroundColor Gray
-Write-Host "                              ↓ WS广播" -ForegroundColor Gray
-Write-Host "  B端Agent ← ws://127.0.0.1:8765/ws/a2a/merchant/box-001" -ForegroundColor Gray
-Write-Host "  B端Agent → LLM谈判 → siri:8010 (DeepSeek)" -ForegroundColor Gray
-Write-Host "  B端Agent → 报价 → signaling → C端小程序" -ForegroundColor Gray
-Write-Host ""
-Write-Host "💡 提示：" -ForegroundColor Yellow
-Write-Host "  • 微信开发者工具需勾选「不校验合法域名」" -ForegroundColor Gray
-Write-Host "  • 所有终端窗口保持打开，按 Ctrl+C 停止服务" -ForegroundColor Gray
-Write-Host "  • 查看日志：logs/claw.log" -ForegroundColor Gray
-Write-Host ""
+# 运行主程序
+Main
