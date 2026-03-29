@@ -45,16 +45,18 @@ App({
   // ── 配置方法 ──────────────────────────────────────────
   _getServerBase() {
     // 开发环境：本地 localhost
-    // 生产环境：实际服务器地址
+    // 生产环境：Railway 生产服务器
     const envVersion = wx.getAccountInfoSync().miniProgram.envVersion;
     const isDev = envVersion === 'develop';
     
     if (isDev) {
       // 本地开发：使用 localhost
+      console.log('[App] 环境: 开发环境 (localhost)');
       return 'http://localhost:8765';
     } else {
-      // 生产环境：使用实际服务器
-      return 'https://api.project-claw.com';
+      // 生产环境：使用 Railway 部署的服务器
+      console.log('[App] 环境: 生产环境 (Railway)');
+      return 'https://project-claw-production.up.railway.app';
     }
   },
 
@@ -63,9 +65,11 @@ App({
     const isDev = envVersion === 'develop';
     
     if (isDev) {
+      console.log('[App] WebSocket: 开发环境 (localhost)');
       return 'ws://localhost:8765';
     } else {
-      return 'wss://api.project-claw.com';
+      console.log('[App] WebSocket: 生产环境 (Railway)');
+      return 'wss://project-claw-production.up.railway.app';
     }
   },
 
