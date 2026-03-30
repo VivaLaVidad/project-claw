@@ -1,27 +1,45 @@
-"""Project Claw 完整 API 服务器 - cloud_server/api_server_pro.py"""
-import logging
+"""cloud_server/api_server_pro.py
+C 端微信小程序工业级 API 网关（鉴权 + 流式撮合）
+"""
+from __future__ import annotations
+
+import hashlib
 import json
-from fastapi import FastAPI, WebSocket, Header, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-import uvicorn
-from typing import Optional
-import uuid
-
-# 导入必要的模块
-from auth_guard import verify_rate_limit_only, verify_session, create_session, invalidate_session
-from model_gateway import initialize_model_gateway, get_model_gateway
-from cost_tracker import CostTracker, CostRecord, usd_to_cny
+import os
 import time
+import uuid
+from datetime import datetime, timedelta, timezone
+from typing import Any, AsyncGenerator, Optional
 
-# 配置日志
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+import httpx
+import redis.asyncio as redis
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from jose import jwt, JWTError
+from sqlalchemy import select
 
-# 创建 FastAPI 应用
-app = FastAPI(title="Project Claw API Server", version="1.0.0")
+from cloud_server.data_models import ClientORM
+from cloud_server.db import init_db_schema, session_scope
 
-# 添加 CORS 中间件
+
+APP_NAME = "Project Claw C-API"
+JWT_SECRET = os.getenv("HUB_JWT_SECRET", "claw-change-in-prod")
+JWT_ALG = "HS256"
+ACCESS_EXPIRE_SEC = int(os.getenv("ACCESS_TOKEN_EXPIRE_SEC", "3600"))
+REFRESH_EXPIRE_SEC = int(os.getenv("REFRESH_TOKEN_EXPIRE_SEC", "2592000"))
+
+WECHAT_APPID = os.getenv("WECHAT_APPID", "")
+WECHAT_SECRET = os.getenv("WECHAT_SECRET", "")
+WECHAT_LOGIN_URL = "https://api.weixin.qq.com/sns/jscode2session"
+WECHAT_MOCK_LOGIN = os.getenv("WECHAT_MOCK_LOGIN", "1") == "1"
+
+REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
+REDIS_OFFER_CHANNEL = os.getenv("REDIS_OFFER_CHANNEL", "claw:merchant_offer")
+RATE_LIMIT_PER_MIN = 10
+
+
+app = FastAPI(title=APP_NAME, version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,364 +48,197 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 全局服务实例
-cost_tracker = CostTracker()
-model_gateway = None
+redis_client = redis.from_url(REDIS_URL, decode_responses=True)
 
-@app.on_event("startup")
-async def startup_event():
-    """应用启动事件"""
-    global model_gateway
-    logger.info("🚀 Project Claw API 服务器启动中...")
-    
-    # 初始化模型网关
-    model_gateway = await initialize_model_gateway()
-    
-    logger.info("✓ 所有服务已初始化")
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """应用关闭事件"""
-    logger.info("🛑 Project Claw API 服务器关闭中...")
-    if model_gateway:
-        await model_gateway.close()
+def _now_ts() -> int:
+    return int(time.time())
 
-# ==================== 认证接口 ====================
 
-@app.post("/auth/login")
-async def login(request: Request):
-    """微信登录"""
+def _issue_token(sub: str, token_type: str, exp_sec: int) -> str:
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": sub,
+        "typ": token_type,
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(seconds=exp_sec)).timestamp()),
+        "jti": uuid.uuid4().hex,
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
+
+
+def _decode_token(token: str) -> dict[str, Any]:
     try:
-        data = await request.json()
-        code = data.get("code")
-        
-        if not code:
-            raise HTTPException(status_code=400, detail="缺少 code 参数")
-        
-        # 这里应该调用微信 API 验证 code
-        # 为了演示，我们直接生成 session
-        user_id = f"user_{uuid.uuid4().hex[:8]}"
-        user_info = {
-            "user_id": user_id,
-            "nickname": "用户",
-            "avatar": "",
-            "created_at": time.time()
-        }
-        
-        session_id = create_session(user_id, user_info)
-        
-        logger.info(f"✓ 用户登录: {user_id}")
-        
-        return {
-            "code": 200,
-            "message": "登录成功",
-            "data": {
-                "session_id": session_id,
-                "user_info": user_info
-            }
-        }
-    except Exception as e:
-        logger.error(f"登录失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+    except JWTError as e:
+        raise HTTPException(status_code=401, detail=f"invalid_token:{e}")
 
-@app.get("/auth/user-info")
-async def get_user_info(authorization: str = Header(...)):
-    """获取用户信息"""
-    try:
-        session_id = authorization.replace("Bearer ", "")
-        session = verify_session(session_id)
-        
-        if not session:
-            raise HTTPException(status_code=401, detail="会话无效")
-        
-        return {
-            "code": 200,
-            "message": "获取成功",
-            "data": session["user_info"]
-        }
-    except Exception as e:
-        logger.error(f"获取用户信息失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/auth/logout")
-async def logout(authorization: str = Header(...)):
-    """登出"""
-    try:
-        session_id = authorization.replace("Bearer ", "")
-        invalidate_session(session_id)
-        
-        return {
-            "code": 200,
-            "message": "登出成功"
-        }
-    except Exception as e:
-        logger.error(f"登出失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+async def _rate_limit_guard(client_key: str, route: str):
+    key = f"rl:{route}:{client_key}"
+    now = _now_ts()
+    win_start = now - 60
+    pipe = redis_client.pipeline()
+    pipe.zremrangebyscore(key, 0, win_start)
+    member = f"{now}:{uuid.uuid4().hex[:8]}"
+    pipe.zadd(key, {member: now})
+    pipe.zcard(key)
+    pipe.expire(key, 90)
+    _, _, count, _ = await pipe.execute()
+    if int(count) > RATE_LIMIT_PER_MIN:
+        raise HTTPException(status_code=429, detail="rate_limit_exceeded")
 
-# ==================== 订单接口 ====================
 
-@app.get("/orders/list")
-async def list_orders(authorization: str = Header(...)):
-    """获取订单列表"""
-    try:
-        session_id = authorization.replace("Bearer ", "")
-        session = verify_session(session_id)
-        
-        if not session:
-            raise HTTPException(status_code=401, detail="会话无效")
-        
-        # 这里应该从数据库查询订单
-        # 为了演示，我们返回示例数据
-        orders = [
-            {
-                "order_id": f"order_{i}",
-                "status": "pending" if i % 2 == 0 else "completed",
-                "created_at": time.time() - i * 3600,
-                "amount": 100 + i * 10
-            }
-            for i in range(5)
-        ]
-        
-        return {
-            "code": 200,
-            "message": "获取成功",
-            "data": {"orders": orders}
-        }
-    except Exception as e:
-        logger.error(f"获取订单列表失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+async def _wechat_exchange_code(code: str) -> str:
+    if WECHAT_MOCK_LOGIN and (not WECHAT_APPID or not WECHAT_SECRET):
+        # 本地/测试兜底：由 code 稳定映射 openid
+        digest = hashlib.sha256(code.encode("utf-8")).hexdigest()[:24]
+        return f"mock_openid_{digest}"
 
-@app.get("/orders/{order_id}")
-async def get_order(order_id: str, authorization: str = Header(...)):
-    """获取订单详情"""
-    try:
-        session_id = authorization.replace("Bearer ", "")
-        session = verify_session(session_id)
-        
-        if not session:
-            raise HTTPException(status_code=401, detail="会话无效")
-        
-        # 这里应该从数据库查询订单
-        order = {
-            "order_id": order_id,
-            "status": "pending",
-            "created_at": time.time(),
-            "amount": 100,
-            "items": [
-                {"name": "商品1", "price": 50, "quantity": 1},
-                {"name": "商品2", "price": 50, "quantity": 1}
-            ]
-        }
-        
-        return {
-            "code": 200,
-            "message": "获取成功",
-            "data": order
-        }
-    except Exception as e:
-        logger.error(f"获取订单详情失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    params = {
+        "appid": WECHAT_APPID,
+        "secret": WECHAT_SECRET,
+        "js_code": code,
+        "grant_type": "authorization_code",
+    }
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(WECHAT_LOGIN_URL, params=params)
+        data = resp.json()
 
-# ==================== 成本接口 ====================
+    if data.get("errcode"):
+        raise HTTPException(status_code=401, detail=f"wechat_auth_failed:{data.get('errmsg', '')}")
 
-@app.get("/cost/analysis")
-async def analyze_cost(
-    start_date: str,
-    end_date: str,
-    tenant_id: Optional[str] = None,
-    authorization: str = Header(...)
-):
-    """成本分析"""
-    try:
-        session_id = authorization.replace("Bearer ", "")
-        session = verify_session(session_id)
-        
-        if not session:
-            raise HTTPException(status_code=401, detail="会话无效")
-        
-        # 获取成本数据
-        if tenant_id:
-            cost_data = cost_tracker.get_tenant_cost(tenant_id)
+    openid = str(data.get("openid", "")).strip()
+    if not openid:
+        raise HTTPException(status_code=401, detail="wechat_openid_missing")
+    return openid
+
+
+async def _silent_register_or_login(openid: str) -> dict[str, Any]:
+    async with session_scope() as session:
+        row = await session.scalar(select(ClientORM).where(ClientORM.wechat_openid == openid))
+        if row is None:
+            row = ClientORM(
+                client_id=f"c_{uuid.uuid4().hex[:16]}",
+                wechat_openid=openid,
+                persona_vector={},
+                risk_score=0.0,
+                created_at=time.time(),
+                updated_at=time.time(),
+            )
+            session.add(row)
+            await session.flush()
         else:
-            cost_data = cost_tracker.get_daily_cost(start_date)
-        
-        return {
-            "code": 200,
-            "message": "获取成功",
-            "data": cost_data
-        }
-    except Exception as e:
-        logger.error(f"成本分析失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+            row.updated_at = time.time()
 
-@app.get("/cost/daily-stats")
-async def get_daily_stats(days: int = 30, authorization: str = Header(...)):
-    """获取每日成本统计"""
-    try:
-        session_id = authorization.replace("Bearer ", "")
-        session = verify_session(session_id)
-        
-        if not session:
-            raise HTTPException(status_code=401, detail="会话无效")
-        
-        # 这里应该从数据库查询每日成本
-        # 为了演示，我们返回示例数据
-        data = [
-            {
-                "date": f"2024-01-{i:02d}",
-                "cost_usd": 10 + i * 0.5,
-                "cost_cny": (10 + i * 0.5) * 7
-            }
-            for i in range(1, days + 1)
-        ]
-        
-        return {
-            "code": 200,
-            "message": "获取成功",
-            "data": data
-        }
-    except Exception as e:
-        logger.error(f"获取每日成本统计失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        client_id = row.client_id
 
-# ==================== 舰队接口 ====================
-
-@app.get("/fleet/status")
-async def get_fleet_status(authorization: str = Header(...)):
-    """获取舰队状态"""
-    try:
-        session_id = authorization.replace("Bearer ", "")
-        session = verify_session(session_id)
-        
-        if not session:
-            raise HTTPException(status_code=401, detail="会话无效")
-        
-        # 这里应该从舰队管理器获取状态
-        # 为了演示，我们返回示例数据
-        stats = {
-            "total_boxes": 10,
-            "idle_boxes": 6,
-            "busy_boxes": 3,
-            "error_boxes": 1,
-            "total_orders": 100,
-            "avg_confidence": 0.85,
-            "pending_tasks": 5,
-            "boxes": [
-                {
-                    "box_id": f"box_{i}",
-                    "status": ["idle", "busy", "error"][i % 3],
-                    "daily_orders": 10 + i,
-                    "confidence": 0.8 + i * 0.01
-                }
-                for i in range(10)
-            ]
-        }
-        
-        return {
-            "code": 200,
-            "message": "获取成功",
-            "data": stats
-        }
-    except Exception as e:
-        logger.error(f"获取舰队状态失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/fleet/pending-tasks")
-async def get_pending_tasks(limit: int = 100, authorization: str = Header(...)):
-    """获取待审批任务"""
-    try:
-        session_id = authorization.replace("Bearer ", "")
-        session = verify_session(session_id)
-        
-        if not session:
-            raise HTTPException(status_code=401, detail="会话无效")
-        
-        # 这里应该从数据库查询待审批任务
-        # 为了演示，我们返回示例数据
-        tasks = [
-            {
-                "task_id": f"task_{i}",
-                "box_id": f"box_{i % 10}",
-                "confidence": 0.5 + i * 0.01,
-                "reason": "置信度过低",
-                "created_at": time.time() - i * 3600,
-                "state_data": {}
-            }
-            for i in range(min(limit, 10))
-        ]
-        
-        return {
-            "code": 200,
-            "message": "获取成功",
-            "data": tasks
-        }
-    except Exception as e:
-        logger.error(f"获取待审批任务失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/fleet/approve-task")
-async def approve_task(request: Request, authorization: str = Header(...)):
-    """批准任务"""
-    try:
-        session_id = authorization.replace("Bearer ", "")
-        session = verify_session(session_id)
-        
-        if not session:
-            raise HTTPException(status_code=401, detail="会话无效")
-        
-        data = await request.json()
-        task_id = data.get("task_id")
-        decision = data.get("decision")
-        
-        logger.info(f"✓ 任务已批准: {task_id} ({decision})")
-        
-        return {
-            "code": 200,
-            "message": "批准成功"
-        }
-    except Exception as e:
-        logger.error(f"批准任务失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ==================== WebSocket 接口 ====================
-
-@app.websocket("/ws/audio/{session_id}")
-async def websocket_audio(websocket: WebSocket, session_id: str):
-    """音频 WebSocket"""
-    await websocket.accept()
-    logger.info(f"✓ WebSocket 连接已建立: {session_id}")
-    
-    try:
-        while True:
-            data = await websocket.receive_bytes()
-            
-            # 这里应该处理音频数据
-            # 为了演示，我们直接回显
-            await websocket.send_bytes(data)
-    
-    except Exception as e:
-        logger.error(f"WebSocket 错误: {e}")
-    finally:
-        logger.info(f"✓ WebSocket 连接已关闭: {session_id}")
-
-# ==================== 健康检查 ====================
-
-@app.get("/health")
-async def health_check():
-    """健康检查"""
+    access = _issue_token(client_id, "access", ACCESS_EXPIRE_SEC)
+    refresh = _issue_token(client_id, "refresh", REFRESH_EXPIRE_SEC)
     return {
-        "code": 200,
-        "message": "服务正常",
-        "timestamp": time.time()
+        "client_id": client_id,
+        "openid": openid,
+        "access_jwt": access,
+        "refresh_jwt": refresh,
+        "access_expires_in": ACCESS_EXPIRE_SEC,
+        "refresh_expires_in": REFRESH_EXPIRE_SEC,
     }
 
-# ==================== 主函数 ====================
+
+def _bearer_claims(authorization: str = Header(default="")) -> dict[str, Any]:
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="missing_bearer_token")
+    claims = _decode_token(authorization[7:])
+    if claims.get("typ") != "access":
+        raise HTTPException(status_code=401, detail="access_token_required")
+    return claims
+
+
+@app.on_event("startup")
+async def _startup():
+    await init_db_schema()
+
+
+@app.post("/api/v1/auth/wechat_login")
+async def api_wechat_login(body: dict[str, Any]):
+    code = str(body.get("code", "")).strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="code_required")
+    await _rate_limit_guard(client_key=hashlib.md5(code.encode()).hexdigest()[:12], route="wechat_login")
+    openid = await _wechat_exchange_code(code)
+    return {"ok": True, **await _silent_register_or_login(openid)}
+
+
+@app.get("/api/v1/trade/stream_quotes")
+async def api_trade_stream_quotes(
+    request_id: str = Query(default=""),
+    claims: dict[str, Any] = Depends(_bearer_claims),
+):
+    client_id = str(claims.get("sub", ""))
+    if not client_id:
+        raise HTTPException(status_code=401, detail="invalid_client")
+    await _rate_limit_guard(client_key=client_id, route="stream_quotes")
+
+    async def _event_gen() -> AsyncGenerator[str, None]:
+        pubsub = redis_client.pubsub()
+        await pubsub.subscribe(REDIS_OFFER_CHANNEL)
+        try:
+            yield f"event: THOUGHT\ndata: {json.dumps({'text': '正在连接商户报价通道...', 'ts': time.time()}, ensure_ascii=False)}\n\n"
+            while True:
+                msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                if not msg:
+                    yield "event: THOUGHT\ndata: {\"text\":\"正在与周边商家实时议价...\"}\n\n"
+                    continue
+                try:
+                    payload = json.loads(msg["data"])
+                except Exception:
+                    continue
+
+                target_client = str(payload.get("client_id", ""))
+                if target_client and target_client != client_id:
+                    continue
+                if request_id and str(payload.get("request_id", "")) != request_id:
+                    continue
+
+                evt_type = str(payload.get("type", "OFFER")).upper()
+                if evt_type not in {"THOUGHT", "OFFER", "MATCH_SUCCESS"}:
+                    evt_type = "OFFER"
+
+                if evt_type == "THOUGHT":
+                    data = {
+                        "request_id": payload.get("request_id", request_id),
+                        "text": payload.get("text", "正在与李记拉面砍价..."),
+                        "ts": time.time(),
+                    }
+                elif evt_type == "MATCH_SUCCESS":
+                    data = {
+                        "request_id": payload.get("request_id", request_id),
+                        "merchant_id": payload.get("merchant_id", ""),
+                        "final_price": payload.get("final_price", 0),
+                        "trade_id": payload.get("trade_id", ""),
+                        "ts": time.time(),
+                    }
+                else:
+                    data = {
+                        "request_id": payload.get("request_id", request_id),
+                        "merchant_id": payload.get("merchant_id", ""),
+                        "offer_id": payload.get("offer_id", ""),
+                        "item_name": payload.get("item_name", ""),
+                        "final_price": payload.get("final_price", 0),
+                        "eta_minutes": payload.get("eta_minutes", None),
+                        "score": payload.get("match_score", None),
+                        "ts": time.time(),
+                    }
+
+                yield f"event: {evt_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+        finally:
+            await pubsub.unsubscribe(REDIS_OFFER_CHANNEL)
+            await pubsub.close()
+
+    return StreamingResponse(_event_gen(), media_type="text/event-stream")
+
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "api_server_pro:app",
-        host="0.0.0.0",
-        port=8765,
-        reload=True,
-        log_level="info"
-    )
+    import uvicorn
+
+    uvicorn.run("cloud_server.api_server_pro:app", host="0.0.0.0", port=int(os.getenv("PORT", "8780")), reload=False)
