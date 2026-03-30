@@ -1,0 +1,56 @@
+<!-- Project Claw v14.3 - pages/history/history.wxml -->
+<view class="page">
+
+  <!-- 顶部标题 -->
+  <view class="header">
+    <view class="header-title">历史订单</view>
+    <view class="header-sub">最近 50 条记录</view>
+  </view>
+
+  <!-- 加载中 -->
+  <view class="loading-bar" wx:if="{{loading}}">
+    <text>同步中…</text>
+  </view>
+
+  <!-- 空状态 -->
+  <view class="empty" wx:if="{{empty && !loading}}">
+    <text class="empty-icon">📋</text>
+    <text class="empty-text">暂无历史订单</text>
+    <text class="empty-hint">发起第一笔询价吧</text>
+    <button class="btn-home" bindtap="backHome">去询价</button>
+  </view>
+
+  <!-- 订单列表 -->
+  <block wx:for="{{items}}" wx:key="request_id" wx:for-item="item" wx:for-index="idx">
+    <view class="order-card">
+
+      <!-- 左侧状态色块 -->
+      <view class="order-status-bar {{item.status === 'success' ? 'bar-ok' : item.status === 'failed' ? 'bar-err' : 'bar-pending'}}"></view>
+
+      <view class="order-body">
+        <view class="order-top">
+          <text class="order-item">{{item.item_name || '未知商品'}}</text>
+          <text class="order-price" wx:if="{{item.final_price}}">¥{{item.final_price}}</text>
+          <text class="order-price-empty" wx:else>待定价</text>
+        </view>
+
+        <view class="order-meta">
+          <text class="meta-tag {{item.status === 'success' ? 'tag-ok' : item.status === 'failed' ? 'tag-err' : 'tag-pending'}}">
+            {{item.status === 'success' ? '成交' : item.status === 'failed' ? '失败' : '进行中'}}
+          </text>
+          <text class="meta-merchant" wx:if="{{item.merchant_id}}">{{item.merchant_id}}</text>
+          <text class="meta-offers" wx:if="{{item.offer_count}}">{{item.offer_count}} 个报价</text>
+        </view>
+
+        <view class="order-bottom">
+          <text class="order-time">{{item.ts ? item.ts : ''}}</text>
+          <text class="order-id">#{{item.request_id ? item.request_id.slice(-8) : ''}}</text>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <!-- 底部空白占位 -->
+  <view class="footer-space"></view>
+
+</view>

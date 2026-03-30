@@ -1,0 +1,17 @@
+# Zeabur deployment config
+# Docs: https://zeabur.com/docs
+name: project-claw-hub
+
+build:
+  dockerfile: Dockerfile
+
+env:
+  PORT: "8765"
+
+ports:
+  - protocol: HTTP
+    port: 8765
+
+healthCheck:
+  path: /health
+  interval: 30

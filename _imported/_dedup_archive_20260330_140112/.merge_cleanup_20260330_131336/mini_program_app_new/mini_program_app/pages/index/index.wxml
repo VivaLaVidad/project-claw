@@ -1,0 +1,123 @@
+<!--
+  Project Claw v14.3 - pages/index/index.wxml
+  首页：询价入口（优化版）
+-->
+<view class="page">
+
+  <!-- 顶部 Hero -->
+  <view class="hero">
+    <view class="hero-title">Project Claw</view>
+    <view class="hero-sub">实时询价 · 极速成交</view>
+    <view class="hero-status">
+      <view class="status-dot {{healthOk === true ? 'dot-ok' : healthOk === false ? 'dot-err' : 'dot-pending'}}"></view>
+      <text class="status-text">{{healthStatus || '连接中…'}}</text>
+      <view class="merchant-badge" wx:if="{{onlineMerchants > 0}}">
+        <text>{{onlineMerchants}} 家在线</text>
+      </view>
+    </view>
+    <view class="geo-row" wx:if="{{geoStr}}">
+      <text class="geo-text">📍 {{geoStr}}</text>
+      <text class="geo-change" bindtap="getLocation">重新定位</text>
+    </view>
+  </view>
+
+  <!-- 主表单卡片 -->
+  <view class="card">
+
+    <!-- 快捷选品 -->
+    <view class="section-label">快捷选品</view>
+    <scroll-view class="quick-scroll" scroll-x="true" enhanced="true" show-scrollbar="false">
+      <view class="quick-list">
+        <view
+          class="quick-tag {{form.item_name === item ? 'quick-tag-active' : ''}}"
+          wx:for="{{quickItems}}"
+          wx:key="*this"
+          wx:for-item="item"
+          data-item="{{item}}"
+          bindtap="onTapQuick"
+        >{{item}}</view>
+      </view>
+    </scroll-view>
+
+    <!-- 商品名称 -->
+    <view class="section-label">我要什么 <text class="required">*</text></view>
+    <input
+      class="form-input form-input-lg"
+      value="{{form.item_name}}"
+      placeholder="例：牛肉面、麻辣烫…"
+      data-key="item_name"
+      bindinput="onInput"
+      maxlength="30"
+    />
+
+    <!-- 预算 -->
+    <view class="section-label">预算上限（元）<text class="required">*</text></view>
+    <view class="price-row">
+      <text class="price-symbol">¥</text>
+      <input
+        class="form-input price-input"
+        type="digit"
+        value="{{form.max_price}}"
+        placeholder="15"
+        data-key="max_price"
+        bindinput="onInput"
+      />
+    </view>
+
+    <!-- 需求描述（可折叠） -->
+    <view class="section-label" wx:if="{{form.demand_text}}">需求描述</view>
+    <textarea
+      wx:if="{{form.demand_text}}"
+      class="form-textarea"
+      value="{{form.demand_text}}"
+      data-key="demand_text"
+      bindinput="onInput"
+      maxlength="100"
+      auto-height="true"
+    />
+
+    <!-- 高级选项 -->
+    <view class="advanced-toggle" bindtap="toggleAdvanced">
+      <text>高级选项</text>
+      <text class="toggle-arrow">{{showAdvanced ? '▲' : '▼'}}</text>
+    </view>
+    <view wx:if="{{showAdvanced}}">
+      <view class="form-row">
+        <view class="form-col">
+          <view class="section-label">数量</view>
+          <input class="form-input" type="number" value="{{form.quantity}}" data-key="quantity" bindinput="onInput" />
+        </view>
+        <view class="form-col">
+          <view class="section-label">等待（秒）</view>
+          <input class="form-input" type="number" value="{{form.timeout_sec}}" data-key="timeout_sec" bindinput="onInput" />
+        </view>
+      </view>
+    </view>
+
+  </view>
+
+  <!-- 操作按钮组 -->
+  <view class="btn-group">
+    <button class="btn-location" bindtap="getLocation" wx:if="{{!geoStr}}">
+      📍 获取位置（精准匹配附近商家）
+    </button>
+    <button
+      class="btn-submit"
+      loading="{{loading}}"
+      disabled="{{loading || onlineMerchants === 0}}"
+      bindtap="submitTrade"
+    >
+      {{loading ? '询价中…' : onlineMerchants === 0 ? '暂无在线商家' : '立即询价 →'}}
+    </button>
+  </view>
+
+  <!-- 底部工具栏 -->
+  <view class="footer">
+    <text class="footer-link" bindtap="onTapDiag">{{diagLoading ? '检测中…' : '🔄 刷新状态'}}</text>
+    <text class="footer-sep">·</text>
+    <text class="footer-link" bindtap="goHistory">📋 历史订单</text>
+    <text class="footer-sep">·</text>
+    <text class="footer-link" bindtap="goPrivacy">隐私政策</text>
+  </view>
+
+</view>

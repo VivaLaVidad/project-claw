@@ -1,0 +1,44 @@
+# .dockerignore - 排除不需要打包进镜像的文件
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual envs
+maic_env/
+venv/
+.venv/
+env/
+
+# edge_box (不部署到云端)
+edge_box/
+mock_client/
+mini_program_prep/
+
+# Local data
+*.db
+*.log
+hub_audit.log
+claw_orders.db
+
+# Dev files
+.env
+.env.example
+*.png
+*.jpg
+menu.csv
+
+# IDE
+.cursor/
+.vscode/
+*.md
+
+# Git
+.git/
+.gitignore

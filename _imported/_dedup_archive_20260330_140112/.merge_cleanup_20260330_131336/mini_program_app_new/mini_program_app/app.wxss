@@ -1,0 +1,73 @@
+/* Project Claw v14.3 - app.wxss - 全局样式 */
+
+/* ── CSS 变量 ── */
+page {
+  --color-bg:        #f0f4f8;
+  --color-card:      #ffffff;
+  --color-primary:   #2563eb;
+  --color-dark:      #0f172a;
+  --color-text:      #1e293b;
+  --color-muted:     #64748b;
+  --color-border:    #e2e8f0;
+  --color-success:   #22c55e;
+  --color-danger:    #ef4444;
+  --color-warning:   #f59e0b;
+  --radius-card:     24rpx;
+  --radius-btn:      16rpx;
+  --shadow-card:     0 2rpx 16rpx rgba(0,0,0,0.06);
+
+  font-family: -apple-system, 'PingFang SC', 'Helvetica Neue', sans-serif;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-size: 28rpx;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── 通用容器 ── */
+.page {
+  min-height: 100vh;
+  background: var(--color-bg);
+}
+
+/* ── 通用卡片 ── */
+.card {
+  background: var(--color-card);
+  border-radius: var(--radius-card);
+  padding: 32rpx;
+  margin-bottom: 20rpx;
+  box-shadow: var(--shadow-card);
+}
+
+/* ── 通用按钮 ── */
+button {
+  border-radius: var(--radius-btn) !important;
+  font-family: inherit !important;
+}
+button::after { border: none !important; }
+
+/* ── 通用输入框 ── */
+input, textarea {
+  font-family: inherit;
+  color: var(--color-text);
+}
+
+/* ── 分割线 ── */
+.divider {
+  height: 2rpx;
+  background: var(--color-border);
+  margin: 16rpx 0;
+}
+
+/* ── 文字工具类 ── */
+.text-primary { color: var(--color-primary); }
+.text-muted   { color: var(--color-muted); }
+.text-danger  { color: var(--color-danger); }
+.text-success { color: var(--color-success); }
+.text-bold    { font-weight: 700; }
+.text-center  { text-align: center; }
+
+/* ── 安全区适配 ── */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}

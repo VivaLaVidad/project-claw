@@ -31,4 +31,4 @@ ENV REDIS_URL=""
 EXPOSE 8765
 
 # 启动命令
-CMD ["uvicorn", "cloud_server.api_server_pro:app", "--host", "0.0.0.0", "--port", "8765"]
+CMD ["uvicorn", "cloud_server.signaling_hub:app", "--host", "0.0.0.0", "--port", "8765"]

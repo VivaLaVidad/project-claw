@@ -1,0 +1,45 @@
+{
+  "name": "Project Claw MiniProgram API Contract",
+  "version": "v1",
+  "base_url": "https://<your-domain>",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "desc": "Hub health status"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/merchants/online",
+      "desc": "Online merchant count"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/trade/request",
+      "desc": "Create quote request and get offer bundle",
+      "request_model": "TradeRequest",
+      "response_model": "OfferBundle"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/trade/{request_id}",
+      "desc": "Fetch trade snapshot by request_id"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/trade/execute",
+      "desc": "Execute selected offer",
+      "request_model": "ExecuteTrade"
+    }
+  ],
+  "error_codes": [
+    "request_not_found",
+    "request_client_mismatch",
+    "request_expired",
+    "request_already_accepted",
+    "offer_merchant_not_found",
+    "offer_id_mismatch",
+    "offer_price_mismatch",
+    "merchant_offline"
+  ]
+}

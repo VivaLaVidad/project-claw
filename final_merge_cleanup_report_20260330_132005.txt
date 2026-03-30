@@ -1,0 +1,1 @@
+primary_miniprogram=d:\桌面\Project Claw\mini_program_app legacy_backup=d:\桌面\Project Claw\miniprogram_legacy_backup_20260330_132005 archived_temp_count=2 archived_location=d:\桌面\Project Claw\_imported status=done_non_destructive

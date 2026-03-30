@@ -1,0 +1,255 @@
+/* Project Claw v14.3 - pages/offers/offers.wxss */
+
+.page {
+  min-height: 100vh;
+  background: #f0f4f8;
+  padding-bottom: 160rpx;
+}
+
+/* ── 顶部信息栏 ── */
+.header {
+  background: #0f172a;
+  padding: 40rpx 32rpx 28rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.header-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin-bottom: 6rpx;
+}
+.header-sub {
+  font-size: 24rpx;
+  color: #64748b;
+}
+.countdown {
+  min-width: 88rpx;
+  height: 88rpx;
+  border-radius: 50%;
+  background: #1e293b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #38bdf8;
+  border: 3rpx solid #334155;
+}
+.countdown.urgent {
+  color: #f97316;
+  border-color: #f97316;
+  animation: pulse 0.8s infinite;
+}
+.countdown.expired {
+  color: #ef4444;
+  border-color: #ef4444;
+  font-size: 22rpx;
+}
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+/* ── 汇总栏 ── */
+.summary {
+  background: #1e293b;
+  display: flex;
+  align-items: center;
+  padding: 20rpx 0;
+  margin-bottom: 24rpx;
+}
+.summary-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6rpx;
+}
+.summary-val {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #38bdf8;
+}
+.summary-key {
+  font-size: 20rpx;
+  color: #64748b;
+}
+.summary-divider {
+  width: 2rpx;
+  height: 40rpx;
+  background: #334155;
+}
+
+/* ── 空状态 ── */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 80rpx 40rpx;
+  gap: 16rpx;
+}
+.empty-icon { font-size: 80rpx; }
+.empty-text {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #334155;
+}
+.empty-hint {
+  font-size: 24rpx;
+  color: #94a3b8;
+}
+.btn-back {
+  margin-top: 16rpx;
+  background: #f1f5f9;
+  color: #334155;
+  border-radius: 14rpx;
+  font-size: 28rpx;
+  padding: 0 48rpx;
+  height: 80rpx;
+  border: 2rpx solid #cbd5e1;
+}
+
+/* ── 报价卡片 ── */
+.offer-card {
+  background: #ffffff;
+  border-radius: 20rpx;
+  margin: 0 24rpx 20rpx;
+  padding: 28rpx 24rpx;
+  display: flex;
+  align-items: flex-start;
+  gap: 20rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.06);
+  border: 3rpx solid transparent;
+  transition: all 0.15s;
+}
+.offer-selected {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 4rpx 20rpx rgba(37,99,235,0.15);
+}
+
+.offer-check {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24rpx;
+  font-weight: 700;
+  margin-top: 4rpx;
+}
+.check-off {
+  border: 3rpx solid #cbd5e1;
+  background: #f8fafc;
+}
+.check-on {
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+}
+
+.offer-body { flex: 1; }
+.offer-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+.offer-merchant {
+  font-size: 26rpx;
+  color: #64748b;
+  font-weight: 500;
+}
+.offer-price {
+  font-size: 40rpx;
+  font-weight: 800;
+  color: #dc2626;
+}
+.offer-reply {
+  font-size: 28rpx;
+  color: #1e293b;
+  line-height: 1.6;
+  margin-bottom: 16rpx;
+}
+.offer-meta {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+.score-bar {
+  flex: 1;
+  height: 8rpx;
+  background: #e2e8f0;
+  border-radius: 4rpx;
+  overflow: hidden;
+}
+.score-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #16a34a);
+  border-radius: 4rpx;
+  transition: width 0.4s;
+}
+.score-label {
+  font-size: 22rpx;
+  color: #64748b;
+  white-space: nowrap;
+}
+.offer-eta {
+  font-size: 22rpx;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+/* ── 设备回执 ── */
+.ack-bar {
+  margin: 0 24rpx 20rpx;
+  border-radius: 14rpx;
+  padding: 20rpx 28rpx;
+  font-size: 26rpx;
+  font-weight: 500;
+  text-align: center;
+}
+.ack-ok  { background: #dcfce7; color: #15803d; }
+.ack-err { background: #fef3c7; color: #92400e; }
+
+/* ── 底部操作栏 ── */
+.bottom-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  padding: 20rpx 32rpx;
+  padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
+  display: flex;
+  gap: 20rpx;
+  box-shadow: 0 -4rpx 20rpx rgba(0,0,0,0.08);
+}
+.btn-cancel {
+  flex: 1;
+  background: #f1f5f9;
+  color: #64748b;
+  border-radius: 16rpx;
+  font-size: 28rpx;
+  height: 88rpx;
+  border: 2rpx solid #e2e8f0;
+}
+.btn-confirm {
+  flex: 2;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #ffffff;
+  border-radius: 16rpx;
+  font-size: 30rpx;
+  font-weight: 700;
+  height: 88rpx;
+  border: none;
+  box-shadow: 0 6rpx 20rpx rgba(37,99,235,0.3);
+}
+.btn-confirm-disabled {
+  background: #94a3b8;
+  box-shadow: none;
+}

@@ -1,0 +1,82 @@
+<!-- Project Claw v14.3 - pages/result/result.wxml -->
+<view class="page">
+
+  <!-- 成功状态 -->
+  <block wx:if="{{ok}}">
+    <view class="hero hero-ok">
+      <view class="hero-icon">✅</view>
+      <view class="hero-title">成交成功</view>
+      <view class="hero-sub">商家已收到您的订单</view>
+    </view>
+
+    <view class="detail-card">
+      <view class="detail-row">
+        <text class="detail-key">商品</text>
+        <text class="detail-val">{{request.item_name}}</text>
+      </view>
+      <view class="detail-row">
+        <text class="detail-key">成交商家</text>
+        <text class="detail-val">{{picked.merchant_id}}</text>
+      </view>
+      <view class="detail-row">
+        <text class="detail-key">成交价格</text>
+        <text class="detail-val price">¥ {{picked.final_price}}</text>
+      </view>
+      <view class="detail-row" wx:if="{{picked.reply_text}}">
+        <text class="detail-key">商家话术</text>
+        <text class="detail-val reply">{{picked.reply_text}}</text>
+      </view>
+      <view class="detail-row">
+        <text class="detail-key">单号</text>
+        <text class="detail-val mono">{{request.request_id}}</text>
+      </view>
+    </view>
+
+    <!-- 设备执行状态 -->
+    <view class="ack-card ack-ok" wx:if="{{deviceAck && deviceAck.ok}}">
+      <text class="ack-icon">📱</text>
+      <text class="ack-text">商家设备已执行，微信消息和收款码已发送</text>
+    </view>
+    <view class="ack-card ack-warn" wx:elif="{{deviceAck && !deviceAck.ok}}">
+      <text class="ack-icon">⚠️</text>
+      <text class="ack-text">设备执行异常：{{deviceAck.reason}}，请联系商家</text>
+    </view>
+    <view class="ack-card ack-pending" wx:else>
+      <text class="ack-icon">⏳</text>
+      <text class="ack-text">等待商家微信消息，请留意手机通知</text>
+    </view>
+
+    <view class="tip-card">
+      <text class="tip-text">💡 商家将通过微信向您发送确认消息和收款码，请注意查看。</text>
+    </view>
+  </block>
+
+  <!-- 失败状态 -->
+  <block wx:else>
+    <view class="hero hero-fail">
+      <view class="hero-icon">❌</view>
+      <view class="hero-title">成交失败</view>
+      <view class="hero-sub">请稍后重试</view>
+    </view>
+    <view class="detail-card">
+      <view class="detail-row">
+        <text class="detail-key">失败原因</text>
+        <text class="detail-val err">{{errMsg}}</text>
+      </view>
+      <view class="detail-row" wx:if="{{picked}}">
+        <text class="detail-key">选择商家</text>
+        <text class="detail-val">{{picked.merchant_id}}</text>
+      </view>
+    </view>
+  </block>
+
+  <!-- 操作按钮 -->
+  <view class="btn-group">
+    <button class="btn-history" bindtap="goHistory">查看历史订单</button>
+    <button class="btn-home" bindtap="backHome">继续询价</button>
+  </view>
+
+  <!-- 分享按钮（成功时） -->
+  <button class="btn-share" open-type="share" wx:if="{{shareReady}}">分享给朋友</button>
+
+</view>

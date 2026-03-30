@@ -1,0 +1,91 @@
+<!-- Project Claw v14.3 - pages/offers/offers.wxml -->
+<view class="page">
+
+  <!-- 顶部信息栏 -->
+  <view class="header">
+    <view class="header-left">
+      <view class="header-title">报价列表</view>
+      <view class="header-sub">{{request.item_name}} · 预算 {{request.max_price}} 元</view>
+    </view>
+    <view class="countdown {{expired ? 'expired' : remainSec <= 5 ? 'urgent' : ''}}">
+      <text wx:if="{{!expired}}">{{remainSec}}.{{String(remainMs).padStart(3, '0').slice(0, 1)}}</text>
+      <text wx:else>已过期</text>
+    </view>
+  </view>
+
+  <!-- 汇总信息 -->
+  <view class="summary">
+    <view class="summary-item">
+      <text class="summary-val">{{bundle.total_merchants || 0}}</text>
+      <text class="summary-key">在线商家</text>
+    </view>
+    <view class="summary-divider"></view>
+    <view class="summary-item">
+      <text class="summary-val">{{bundle.responded || 0}}</text>
+      <text class="summary-key">已响应</text>
+    </view>
+    <view class="summary-divider"></view>
+    <view class="summary-item">
+      <text class="summary-val">{{offers.length}}</text>
+      <text class="summary-key">有效报价</text>
+    </view>
+    <view class="summary-divider"></view>
+    <view class="summary-item">
+      <text class="summary-val">{{bundle.elapsed_ms ? bundle.elapsed_ms_sec : '-'}}</text>
+      <text class="summary-key">耗时</text>
+    </view>
+  </view>
+
+  <!-- 无报价 -->
+  <view class="empty" wx:if="{{offers.length === 0}}">
+    <text class="empty-icon">🍜</text>
+    <text class="empty-text">暂无符合条件的报价</text>
+    <text class="empty-hint">可尝试提高预算或更换商品</text>
+    <button class="btn-back" bindtap="backHome">返回重试</button>
+  </view>
+
+  <!-- 报价列表 -->
+  <block wx:for="{{offers}}" wx:key="offer_id" wx:for-item="item" wx:for-index="idx">
+    <view
+      class="offer-card {{selectedIndex === idx ? 'offer-selected' : ''}}"
+      data-index="{{idx}}"
+      bindtap="selectOffer"
+    >
+      <!-- 选中标记 -->
+      <view class="offer-check {{selectedIndex === idx ? 'check-on' : 'check-off'}}">
+        <text wx:if="{{selectedIndex === idx}}">✓</text>
+      </view>
+
+      <view class="offer-body">
+        <view class="offer-top">
+          <text class="offer-merchant">{{item.merchant_id}}</text>
+          <text class="offer-price">¥{{item.final_price}}</text>
+        </view>
+        <view class="offer-reply">{{item.reply_text}}</view>
+        <view class="offer-meta">
+          <view class="score-bar">
+            <view class="score-fill" style="width:{{item.match_score}}%"></view>
+          </view>
+          <text class="score-label">匹配度 {{item.match_score}}%</text>
+          <text class="offer-eta" wx:if="{{item.eta_minutes}}">约 {{item.eta_minutes}} 分钟</text>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <!-- 设备回执提示 -->
+  <view class="ack-bar ack-ok"  wx:if="{{deviceAckStatus === 'ok'}}">✅ 商家设备已确认</view>
+  <view class="ack-bar ack-err" wx:if="{{deviceAckStatus === 'failed'}}">⚠️ 商家设备执行异常</view>
+
+  <!-- 底部操作 -->
+  <view class="bottom-bar" wx:if="{{offers.length > 0}}">
+    <button class="btn-cancel" bindtap="backHome">取消</button>
+    <button
+      class="btn-confirm {{selectedIndex < 0 || expired ? 'btn-confirm-disabled' : ''}}"
+      loading="{{loading}}"
+      disabled="{{loading || selectedIndex < 0 || expired}}"
+      bindtap="confirmTrade"
+    >{{expired ? '已过期' : selectedIndex < 0 ? '请选择报价' : '确认成交'}}</button>
+  </view>
+
+</view>

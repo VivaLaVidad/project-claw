@@ -1,0 +1,56 @@
+<scroll-view class="container" scroll-y="true">
+  <view class="header">
+    <view class="title">隐私保护政策</view>
+    <view class="sub">Project Claw · 最后更新：2026年3月</view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">一、我们收集哪些信息</view>
+    <view class="section-body">
+      1. 用户标识（client_id）：由设备时间戳自动生成，不包含真实姓名或手机号。
+      2. 位置信息（可选）：仅在您主动点击「获取位置」时采集，用于筛选附近商家。不在后台持续采集，不上传至第三方。
+      3. 询价内容：您填写的商品名称、需求描述、预算，用于向附近商家广播询价请求。
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">二、我们如何使用信息</view>
+    <view class="section-body">
+      · 位置信息仅用于在询价时筛选附近在线商家，不用于广告或画像分析。
+      · 询价内容经加密传输至云端信令服务器，服务器不解析明文内容，仅做消息路由。
+      · 历史订单存储于我们的服务器（SQLite），您可随时查阅。
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">三、信息共享</view>
+    <view class="section-body">
+      我们不会将您的个人信息出售或共享给任何第三方，除非：
+      · 依法配合政府监管机构要求；
+      · 您明确授权的情况下。
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">四、数据安全</view>
+    <view class="section-body">
+      · 所有接口通信采用 HTTPS / WSS 加密传输。
+      · JWT Token 有效期 24 小时，过期自动刷新。
+      · 服务器采用最小权限原则，仅开放必要端口。
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">五、您的权利</view>
+    <view class="section-body">
+      您可以随时在「历史订单」页面查看您的询价记录。如需删除账号数据，请联系我们。
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">六、联系我们</view>
+    <view class="section-body">如有隐私相关问题，请通过小程序内反馈功能联系我们。</view>
+  </view>
+
+  <view class="footer">© 2026 Project Claw · 保留所有权利</view>
+</scroll-view>

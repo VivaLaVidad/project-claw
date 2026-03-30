@@ -1,0 +1,30 @@
+# mini_program_prep/c_end_page_logic.txt
+
+小程序页面最小闭环逻辑：
+
+1) 询价页提交（商品名、需求、预算）
+- 生成 request_id
+- 调用 POST /api/v1/trade/request
+- 渲染 offers 列表
+
+2) 报价列表页
+- 用户选择一个报价（offer_id + merchant_id + final_price）
+- 调用 POST /api/v1/trade/execute
+
+3) 成交结果页
+- 成功：展示商家信息与价格
+- 失败：按 detail 提示（如 merchant_offline / request_expired）
+
+TradeRequest 必填：
+- request_id
+- client_id
+- item_name
+- demand_text
+- max_price
+
+ExecuteTrade 必填：
+- request_id
+- offer_id
+- merchant_id
+- client_id
+- final_price
