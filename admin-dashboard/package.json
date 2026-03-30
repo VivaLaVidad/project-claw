@@ -1,0 +1,29 @@
+{
+  "name": "admin-dashboard",
+  "version": "1.0.0",
+  "description": "Project Claw Admin Dashboard",
+  "private": true,
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.0",
+    "antd": "^5.11.0",
+    "@ant-design/icons": "^5.2.6",
+    "recharts": "^2.10.3",
+    "axios": "^1.6.2",
+    "dayjs": "^1.11.10"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "@types/react": "^18.2.37",
+    "@types/react-dom": "^18.2.15",
+    "vite": "^5.0.8",
+    "@vitejs/plugin-react": "^4.2.1"
+  },
+  "scripts": {
+    "dev": "vite",
+    "start": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  }
+}
