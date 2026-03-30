@@ -14,7 +14,12 @@ from contextlib import asynccontextmanager
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.claw_protocol import BillingStatus, ExecuteTrade, MatchFoundEvent, MerchantOffer, MsgType, OfferBundle, SignalEnvelope, SocialIntent, TradeRequest, TradeStatus
 from shared.a2a_handshake import build_packet, open_packet
-from cloud_server.clearing_service import ClearingService
+try:
+    from cloud_server.clearing_service import ClearingService
+except Exception:
+    class ClearingService:  # fallback to keep hub bootable when clearing module absent
+        async def init_models(self):
+            return None
 from cloud_server.ledger_service import LedgerManager
 from cloud_server.social_coordinator import SocialCoordinator
 
@@ -37,7 +42,7 @@ MERCHANT_KEY   = os.getenv("HUB_MERCHANT_KEY", "merchant-shared-key")
 # Railway / Zeabur inject PORT dynamically
 PORT           = int(os.getenv("PORT", "8765"))
 CLEARING_ENABLED = os.getenv("CLEARING_ENABLED", "0") == "1"
-LEDGER_ENABLED = os.getenv("LEDGER_ENABLED", "1") == "1"
+LEDGER_ENABLED = os.getenv("LEDGER_ENABLED", "0") == "1"
 
 
 # ── Audit ────────────────────────────────────────────────────────────────────
