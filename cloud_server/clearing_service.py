@@ -1,283 +1,233 @@
-"""
-cloud_server/clearing_service.py
-Project Claw v14.3 - 金融级账单清算与分账服务
-
-合规说明：
-- 遵循微信支付 V3 分账 API 规范（模拟 Payload）
-- Profit Sharing：平台抽佣 1%，商家分账 99%
-- EscrowManager 处理资金冻结/解冻/结算状态流转
-- 所有金额单位：分（fen），避免浮点精度问题
-"""
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
+import os
 import time
 import uuid
-from dataclasses import dataclass, field, asdict
-from enum import Enum
-from threading import Lock
-from typing import Dict, List, Optional
+from abc import ABC, abstractmethod
+from datetime import datetime, timezone
+from decimal import Decimal, ROUND_HALF_UP
+from typing import Any, Optional
 
-# ─── 常量 ────────────────────────────────────────────────
-PLATFORM_MCH_ID     = "platform_1600000000"
-PLATFORM_FEE_RATE   = 0.01
-MERCHANT_SHARE_RATE = 1 - PLATFORM_FEE_RATE
-WECHAT_PAY_API_BASE = "https://api.mch.weixin.qq.com/v3"
-SPLIT_BILL_VERSION  = "V3"
+from sqlalchemy import DateTime, Numeric, String, Text, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-# ─── 枚举 ────────────────────────────────────────────────
-class EscrowStatus(str, Enum):
-    PENDING  = "PENDING"
-    FROZEN   = "FROZEN"
-    SETTLED  = "SETTLED"
-    REFUNDED = "REFUNDED"
-    FAILED   = "FAILED"
-
-class SplitBillStatus(str, Enum):
-    DRAFT     = "DRAFT"
-    SUBMITTED = "SUBMITTED"
-    ACCEPTED  = "ACCEPTED"
-    FINISHED  = "FINISHED"
-    FAILED    = "FAILED"
-
-# ─── 数据模型 ─────────────────────────────────────────────
-@dataclass
-class SplitReceiver:
-    mch_id:      str
-    name:        str
-    amount:      int
-    description: str
-    share_rate:  float
-
-@dataclass
-class SplitBill:
-    bill_id:          str
-    intent_id:        str
-    transaction_id:   str
-    out_order_no:     str
-    total_amount:     int
-    merchant_amount:  int
-    platform_fee:     int
-    receivers:        List[SplitReceiver]
-    status:           SplitBillStatus = SplitBillStatus.DRAFT
-    created_at:       float = field(default_factory=time.time)
-    settled_at:       Optional[float] = None
-    raw_payload:      Optional[dict]  = None
-
-    def to_dict(self) -> dict:
-        d = asdict(self)
-        d["status"] = self.status.value
-        return d
-
-@dataclass
-class EscrowRecord:
-    escrow_id:      str
-    intent_id:      str
-    client_id:      str
-    merchant_id:    str
-    total_amount:   int
-    frozen_at:      Optional[float]  = None
-    unfrozen_at:    Optional[float]  = None
-    status:         EscrowStatus     = EscrowStatus.PENDING
-    split_bill_id:  Optional[str]    = None
-    failure_reason: Optional[str]    = None
-    audit_log:      List[dict]       = field(default_factory=list)
-
-    def _add_audit(self, action: str, detail: str = "") -> None:
-        self.audit_log.append({"ts": time.time(), "action": action, "detail": detail})
-
-    def to_dict(self) -> dict:
-        d = asdict(self)
-        d["status"] = self.status.value
-        return d
-
-# ─── 工具函数 ─────────────────────────────────────────────
-def yuan_to_fen(yuan: float) -> int:
-    return round(yuan * 100)
-
-def fen_to_yuan(fen: int) -> float:
-    return round(fen / 100, 2)
-
-def _mask_name(name: str) -> str:
-    if len(name) <= 2:
-        return name[0] + "*"
-    return name[0] + "*" * (len(name) - 2) + name[-1]
-
-def _mock_sign_payload(out_order_no: str, amount: int) -> str:
-    raw = f"{out_order_no}|{amount}|{int(time.time())}"
-    return "MOCK-SIG-" + hmac.new(
-        b"project-claw-signing-key",
-        raw.encode(),
-        hashlib.sha256,
-    ).hexdigest()[:32].upper()
-
-# ─── generate_split_bill ─────────────────────────────────
-def generate_split_bill(
-    intent_id: str,
-    merchant_id: str,
-    merchant_name: str,
-    final_price_yuan: float,
-    transaction_id: Optional[str] = None,
-    platform_fee_rate: float = PLATFORM_FEE_RATE,
-) -> SplitBill:
-    """
-    生成微信支付 V3 分账 Payload。
-    total_amount    = round(final_price * 100)
-    platform_fee    = max(1, round(total_amount * fee_rate))
-    merchant_amount = total_amount - platform_fee
-    """
-    total_fen    = yuan_to_fen(final_price_yuan)
-    platform_fen = max(1, round(total_fen * platform_fee_rate))
-    merchant_fen = total_fen - platform_fen
-    bill_id      = f"SB-{intent_id[:8]}-{uuid.uuid4().hex[:8].upper()}"
-    out_order_no = f"PC{int(time.time())}{uuid.uuid4().hex[:6].upper()}"
-    txn_id       = transaction_id or f"MOCK-TXN-{uuid.uuid4().hex[:16].upper()}"
-
-    receivers = [
-        SplitReceiver(
-            mch_id=merchant_id, name=_mask_name(merchant_name),
-            amount=merchant_fen,
-            description=f"Project Claw 成交分账 - {merchant_name}",
-            share_rate=1 - platform_fee_rate,
-        ),
-        SplitReceiver(
-            mch_id=PLATFORM_MCH_ID, name="Project Claw 平台",
-            amount=platform_fen,
-            description=f"平台服务费（{platform_fee_rate*100:.0f}%）",
-            share_rate=platform_fee_rate,
-        ),
-    ]
-
-    raw_payload = {
-        "api_version":    SPLIT_BILL_VERSION,
-        "api_url":        f"{WECHAT_PAY_API_BASE}/profitsharing/orders",
-        "appid":          "wx_project_claw",
-        "transaction_id": txn_id,
-        "out_order_no":   out_order_no,
-        "receivers": [
-            {"type": "MERCHANT_ID", "account": r.mch_id, "name": r.name,
-             "amount": r.amount, "description": r.description}
-            for r in receivers
-        ],
-        "unfreeze_unsplit": False,
-        "_meta": {
-            "bill_id": bill_id, "intent_id": intent_id,
-            "total_amount": total_fen, "merchant_amount": merchant_fen,
-            "platform_fee": platform_fen, "fee_rate": platform_fee_rate,
-            "generated_at": time.time(),
-        },
-        "_signature": _mock_sign_payload(out_order_no, total_fen),
-    }
-
-    return SplitBill(
-        bill_id=bill_id, intent_id=intent_id,
-        transaction_id=txn_id, out_order_no=out_order_no,
-        total_amount=total_fen, merchant_amount=merchant_fen,
-        platform_fee=platform_fen, receivers=receivers,
-        status=SplitBillStatus.DRAFT, raw_payload=raw_payload,
-    )
+from cloud_server.ledger_service import LedgerEntry, LedgerManager
 
 
-# ─── EscrowManager ───────────────────────────────────────
-class EscrowManager:
-    """
-    资金托管管理器。
-    状态流转: PENDING → FROZEN → SETTLED / REFUNDED / FAILED
-    """
-    def __init__(self):
-        self._records = {}
-        self._lock = Lock()
+class Base(DeclarativeBase):
+    pass
 
-    def freeze(self, intent_id, client_id, merchant_id, amount_yuan) -> EscrowRecord:
-        """冻结资金，等待交付确认"""
-        with self._lock:
-            escrow_id = f"ESC-{uuid.uuid4().hex[:12].upper()}"
-            record = EscrowRecord(
-                escrow_id=escrow_id, intent_id=intent_id,
-                client_id=client_id, merchant_id=merchant_id,
-                total_amount=yuan_to_fen(amount_yuan),
-                status=EscrowStatus.FROZEN, frozen_at=time.time(),
-            )
-            record._add_audit("FREEZE", f"冻结 ¥{amount_yuan} 成功")
-            self._records[escrow_id] = record
-        return record
 
-    def settle(self, escrow_id, merchant_name="商家", transaction_id=None) -> SplitBill:
-        """解冻并生成微信支付 V3 分账单：商家99%，平台1%"""
-        with self._lock:
-            record = self._get_or_raise(escrow_id)
-            if record.status != EscrowStatus.FROZEN:
-                raise ValueError(f"[Escrow] {escrow_id} 状态={record.status}，仅FROZEN可结算")
-            bill = generate_split_bill(
-                intent_id=record.intent_id, merchant_id=record.merchant_id,
-                merchant_name=merchant_name,
-                final_price_yuan=fen_to_yuan(record.total_amount),
-                transaction_id=transaction_id,
-            )
-            bill.status = SplitBillStatus.SUBMITTED
-            bill.settled_at = time.time()
-            record.status = EscrowStatus.SETTLED
-            record.unfrozen_at = time.time()
-            record.split_bill_id = bill.bill_id
-            record._add_audit(
-                "SETTLE",
-                f"分账：商家 ¥{fen_to_yuan(bill.merchant_amount)}，"
-                f"平台 ¥{fen_to_yuan(bill.platform_fee)}"
-            )
-        return bill
+class ClearingLedger(Base):
+    __tablename__ = "clearing_ledger"
 
-    def refund(self, escrow_id, reason="交易取消") -> EscrowRecord:
-        """解冻退回消费者"""
-        with self._lock:
-            record = self._get_or_raise(escrow_id)
-            if record.status not in (EscrowStatus.FROZEN, EscrowStatus.PENDING):
-                raise ValueError(f"[Escrow] {escrow_id} 状态={record.status}，仅FROZEN/PENDING可退款")
-            record.status = EscrowStatus.REFUNDED
-            record.unfrozen_at = time.time()
-            record.failure_reason = reason
-            record._add_audit("REFUND", f"退款原因：{reason}")
-        return record
+    ledger_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    request_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    trade_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    client_id: Mapped[str] = mapped_column(String(64), index=True)
+    merchant_id: Mapped[str] = mapped_column(String(64), index=True)
+    promoter_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+    final_price: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=Decimal("0"))
+    status: Mapped[str] = mapped_column(String(32), default="prepay_created", index=True)
+    out_trade_no: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    wechat_transaction_id: Mapped[str] = mapped_column(String(80), default="", index=True)
+    payment_qr_url: Mapped[str] = mapped_column(Text, default="")
+    merchant_share: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=Decimal("0"))
+    promoter_share: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=Decimal("0"))
+    platform_share: Mapped[Decimal] = mapped_column(Numeric(20, 6), default=Decimal("0"))
+    audit_hash: Mapped[str] = mapped_column(String(128), default="")
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")
+    error_reason: Mapped[str] = mapped_column(String(128), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
-    def mark_failed(self, escrow_id, reason) -> EscrowRecord:
-        with self._lock:
-            record = self._get_or_raise(escrow_id)
-            record.status = EscrowStatus.FAILED
-            record.failure_reason = reason
-            record._add_audit("FAILED", reason)
-        return record
 
-    def get(self, escrow_id):
-        return self._records.get(escrow_id)
+class WechatPayProvider(ABC):
+    @abstractmethod
+    async def create_prepay_order(self, payload: dict[str, Any]) -> dict[str, Any]:
+        ...
 
-    def get_by_intent(self, intent_id):
-        return next((r for r in self._records.values() if r.intent_id == intent_id), None)
 
-    def summary(self) -> dict:
-        """资金统计摘要"""
-        rs = list(self._records.values())
-        settled_fen = sum(r.total_amount for r in rs if r.status == EscrowStatus.SETTLED)
+class MockWechatPayProvider(WechatPayProvider):
+    async def create_prepay_order(self, payload: dict[str, Any]) -> dict[str, Any]:
+        out_trade_no = payload["out_trade_no"]
         return {
-            "total_records":        len(rs),
-            "frozen_count":         sum(1 for r in rs if r.status == EscrowStatus.FROZEN),
-            "settled_count":        sum(1 for r in rs if r.status == EscrowStatus.SETTLED),
-            "refunded_count":       sum(1 for r in rs if r.status == EscrowStatus.REFUNDED),
-            "failed_count":         sum(1 for r in rs if r.status == EscrowStatus.FAILED),
-            "total_frozen_yuan":    fen_to_yuan(sum(r.total_amount for r in rs if r.status == EscrowStatus.FROZEN)),
-            "total_settled_yuan":   fen_to_yuan(settled_fen),
-            "total_refunded_yuan":  fen_to_yuan(sum(r.total_amount for r in rs if r.status == EscrowStatus.REFUNDED)),
-            "platform_revenue_yuan":fen_to_yuan(round(settled_fen * PLATFORM_FEE_RATE)),
-            "merchant_revenue_yuan":fen_to_yuan(round(settled_fen * MERCHANT_SHARE_RATE)),
-            "fee_rate":             PLATFORM_FEE_RATE,
+            "out_trade_no": out_trade_no,
+            "payment_qr_url": f"weixin://wxpay/bizpayurl?pr={out_trade_no}",
+            "prepay_id": f"mock_prepay_{uuid.uuid4().hex[:16]}",
         }
 
-    def _get_or_raise(self, escrow_id) -> EscrowRecord:
-        r = self._records.get(escrow_id)
-        if not r:
-            raise KeyError(f"[Escrow] escrow_id={escrow_id} 不存在")
-        return r
 
+class ClearingService:
+    def __init__(self, provider: Optional[WechatPayProvider] = None):
+        db_url = os.getenv("CLEARING_DATABASE_URL", "") or os.getenv("DATABASE_URL", "")
+        if db_url.startswith("postgresql://"):
+            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        if not db_url:
+            db_url = "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/project_claw"
 
-# ─── 全局单例 ─────────────────────────────────────────────
-escrow_manager = EscrowManager()
+        self.engine = create_async_engine(db_url, pool_pre_ping=True)
+        self.session_factory = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
+        self.ledger_manager = LedgerManager()
+        self.provider = provider or MockWechatPayProvider()
+
+    @staticmethod
+    def _d(v: Any) -> Decimal:
+        return Decimal(str(v)).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+
+    @staticmethod
+    def _now() -> datetime:
+        return datetime.now(timezone.utc)
+
+    @staticmethod
+    def _audit_hash(payload: dict[str, Any]) -> str:
+        raw = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        return hashlib.sha256(raw).hexdigest()
+
+    @staticmethod
+    def _profit_sharing(total: Decimal) -> tuple[Decimal, Decimal, Decimal]:
+        merchant = (total * Decimal("0.99")).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+        promoter = (total * Decimal("0.008")).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+        platform = (total - merchant - promoter).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+        return merchant, promoter, platform
+
+    async def init_models(self):
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        await self.ledger_manager.init_models()
+
+    async def create_prepay_for_trade(
+        self,
+        request_id: str,
+        trade_id: str,
+        client_id: str,
+        merchant_id: str,
+        final_price: float,
+        promoter_id: str = "",
+    ) -> dict[str, Any]:
+        amount = self._d(final_price)
+        merchant_share, promoter_share, platform_share = self._profit_sharing(amount)
+        out_trade_no = f"PC{int(time.time())}{uuid.uuid4().hex[:8]}"
+        payload = {
+            "appid": os.getenv("WECHAT_APP_ID", "wx_project_claw"),
+            "mchid": os.getenv("WECHAT_MCH_ID", "service_provider_mch"),
+            "description": f"Project Claw trade {trade_id}",
+            "out_trade_no": out_trade_no,
+            "notify_url": os.getenv("WECHAT_NOTIFY_URL", "https://example.com/callback"),
+            "amount": {"total": int((amount * 100).to_integral_value()), "currency": "CNY"},
+            "settle_info": {"profit_sharing": True},
+            "receivers": [
+                {"merchant_id": merchant_id, "ratio": 99.0},
+                {"promoter_id": promoter_id, "ratio": 0.8},
+                {"platform_id": os.getenv("PLATFORM_MCH_ID", "platform"), "ratio": 0.2},
+            ],
+        }
+
+        wx = await self.provider.create_prepay_order(payload)
+        async with self.session_factory() as session:
+            async with session.begin():
+                old = (await session.execute(select(ClearingLedger).where(ClearingLedger.trade_id == trade_id).with_for_update())).scalar_one_or_none()
+                if old is not None:
+                    return {
+                        "ledger_id": old.ledger_id,
+                        "out_trade_no": old.out_trade_no,
+                        "payment_qr_url": old.payment_qr_url,
+                        "profit_sharing": {"merchant": float(old.merchant_share), "promoter": float(old.promoter_share), "platform": float(old.platform_share)},
+                        "route_fee_cents": int((old.platform_share * 100).to_integral_value()),
+                    }
+
+                row = ClearingLedger(
+                    ledger_id=uuid.uuid4().hex,
+                    request_id=request_id,
+                    trade_id=trade_id,
+                    client_id=client_id,
+                    merchant_id=merchant_id,
+                    promoter_id=promoter_id,
+                    final_price=amount,
+                    status="prepay_created",
+                    out_trade_no=out_trade_no,
+                    payment_qr_url=wx["payment_qr_url"],
+                    merchant_share=merchant_share,
+                    promoter_share=promoter_share,
+                    platform_share=platform_share,
+                    audit_hash=self._audit_hash(payload),
+                    payload_json=json.dumps(payload, ensure_ascii=False),
+                    created_at=self._now(),
+                    updated_at=self._now(),
+                )
+                session.add(row)
+                await session.flush()
+                return {
+                    "ledger_id": row.ledger_id,
+                    "out_trade_no": row.out_trade_no,
+                    "payment_qr_url": row.payment_qr_url,
+                    "profit_sharing": {"merchant": float(merchant_share), "promoter": float(promoter_share), "platform": float(platform_share)},
+                    "route_fee_cents": int((platform_share * 100).to_integral_value()),
+                }
+
+    async def parse_wechat_webhook(self, payload_bytes: bytes) -> dict[str, Any]:
+        data = json.loads(payload_bytes.decode("utf-8"))
+        return {
+            "out_trade_no": data.get("out_trade_no", ""),
+            "transaction_id": data.get("transaction_id", ""),
+            "trade_state": data.get("trade_state", "SUCCESS"),
+        }
+
+    async def parse_wechat_webhook_v3(self, payload_bytes: bytes, headers: dict[str, str]) -> dict[str, Any]:
+        _ = headers
+        return await self.parse_wechat_webhook(payload_bytes)
+
+    async def mark_paid(self, out_trade_no: str, wechat_transaction_id: str) -> str:
+        async with self.session_factory() as session:
+            async with session.begin():
+                row = (await session.execute(select(ClearingLedger).where(ClearingLedger.out_trade_no == out_trade_no).with_for_update())).scalar_one_or_none()
+                if row is None:
+                    raise KeyError(out_trade_no)
+                row.status = "paid"
+                row.wechat_transaction_id = wechat_transaction_id
+                row.updated_at = self._now()
+                return row.ledger_id
+
+    async def deduct_routing_token(self, merchant_id: str, amount: float, trade_id: str):
+        # uses db-level lock + idempotency in LedgerManager.deduct_routing_token
+        return await self.ledger_manager.deduct_routing_token(merchant_id=merchant_id, amount=amount, trade_id=trade_id)
+
+    async def settle_promoter_commission(self, ledger_id: str):
+        async with self.session_factory() as session:
+            async with session.begin():
+                row = (await session.execute(select(ClearingLedger).where(ClearingLedger.ledger_id == ledger_id).with_for_update())).scalar_one_or_none()
+                if row is None:
+                    raise ValueError("ledger_not_found")
+                if row.status not in {"paid", "commission_pending"}:
+                    return {"ok": True, "ledger_id": ledger_id, "status": row.status}
+                row.status = "commission_pending"
+
+        await self.deduct_routing_token(row.merchant_id, float(row.platform_share), row.trade_id)
+
+        async with self.session_factory() as session:
+            async with session.begin():
+                row2 = (await session.execute(select(ClearingLedger).where(ClearingLedger.ledger_id == ledger_id).with_for_update())).scalar_one_or_none()
+                if row2 is None:
+                    raise ValueError("ledger_not_found")
+                row2.status = "settled"
+                row2.updated_at = self._now()
+        return {"ok": True, "ledger_id": ledger_id, "status": "settled"}
+
+    async def refund_and_unlock(self, trade_id: str, reason: str = "payment_timeout") -> dict[str, Any]:
+        async with self.session_factory() as session:
+            async with session.begin():
+                row = (await session.execute(select(ClearingLedger).where(ClearingLedger.trade_id == trade_id).with_for_update())).scalar_one_or_none()
+                if row is None:
+                    raise ValueError("ledger_not_found")
+                row.status = "refunded"
+                row.error_reason = reason
+                row.updated_at = self._now()
+
+            async with session.begin():
+                entry = (await session.execute(select(LedgerEntry).where(LedgerEntry.merchant_id == row.merchant_id, LedgerEntry.trade_id == trade_id).with_for_update())).scalar_one_or_none()
+                if entry is not None:
+                    entry.audit_log = json.dumps([{"ts": time.time(), "event": "refund_unlock", "reason": reason}], ensure_ascii=False)
+        return {"ok": True, "trade_id": trade_id, "status": "refunded", "reason": reason}

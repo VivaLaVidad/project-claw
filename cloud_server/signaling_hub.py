@@ -1083,7 +1083,7 @@ async def _handle_execute_ack_billing(merchant_id: str, payload: dict):
 
     try:
         amount = ledger_manager.compute_deduct_amount(trade.final_price)
-        status, txn = await ledger_manager.deduct_token(merchant_id=merchant_id, amount=amount, trade_id=trade.trade_id)
+        status, txn = await ledger_manager.deduct_routing_token(merchant_id=merchant_id, amount=amount, trade_id=trade.trade_id)
         await _push_billing_update(merchant_id, status, event=txn.model_dump())
         audit(
             "billing_deduct_ok",

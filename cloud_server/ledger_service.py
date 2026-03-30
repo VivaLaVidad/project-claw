@@ -324,7 +324,7 @@ class LedgerManager:
                 account.updated_at = self._now()
                 return self._status(account)
 
-    async def deduct_token(self, merchant_id: str, amount: float, trade_id: str) -> tuple[BillingStatus, TransactionEvent]:
+    async def deduct_routing_token(self, merchant_id: str, amount: float, trade_id: str) -> tuple[BillingStatus, TransactionEvent]:
         amt = self._d(amount)
         if amt <= 0:
             raise ValueError("deduct_amount_must_be_positive")
@@ -412,6 +412,18 @@ class LedgerManager:
                 session.add(row)
                 await session.flush()
                 return self._status(account), self._event(row)
+
+    async def deduct_routing_token(self, merchant_id: str, amount: float, trade_id: str) -> tuple[BillingStatus, TransactionEvent]:
+        # backward compatibility alias
+        return await self.deduct_routing_token(merchant_id, amount, trade_id)
+
+    async def deduct_token(self, merchant_id: str, amount: float, trade_id: str) -> tuple[BillingStatus, TransactionEvent]:
+        # backward compatibility alias
+        return await self.deduct_routing_token(merchant_id, amount, trade_id)
+
+    async def deduct_token(self, merchant_id: str, amount: float, trade_id: str) -> tuple[BillingStatus, TransactionEvent]:
+        # backward compatibility alias
+        return await self.deduct_routing_token(merchant_id, amount, trade_id)
 
     async def generate_settlement_report(self, report_date: Optional[date] = None) -> dict:
         target = report_date or (self._now() - timedelta(days=1)).date()
