@@ -1,288 +1,227 @@
-"""physical_tool.py - VLM UI Grounding 架构"""
-import asyncio, json, base64, time, logging, io, numpy as np
-from typing import Optional, Tuple
+"""edge_box/physical_tool.py
+设备物理注入工具（依赖倒置 + VLM 视觉接管）
+
+说明：
+- 该实现用于自动化测试与无障碍辅助，不用于绕过平台安全机制。
+- 通过抽象驱动接口隔离具体设备能力，便于未来异构设备扩展。
+"""
+from __future__ import annotations
+
+import asyncio
+import base64
+import io
+import json
+import logging
+import os
+import random
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from enum import Enum
+from typing import Optional
+
+import httpx
 from PIL import Image
-
-try:
-    import uiautomator2 as u2
-    HAS_U2 = True
-except:
-    HAS_U2 = False
-
-try:
-    import easyocr
-    HAS_OCR = True
-except:
-    HAS_OCR = False
-
-try:
-    import httpx
-    HAS_HTTPX = True
-except:
-    HAS_HTTPX = False
 
 logger = logging.getLogger(__name__)
 
-class VisionMode(str, Enum):
-    LOCAL_VLM = "local_vlm"
-    CLOUD_GPT4O = "cloud_gpt4o"
-    CLOUD_DEEPSEEK = "cloud_deepseek"
-    FALLBACK_OCR = "fallback_ocr"
 
 @dataclass
-class ScreenAnalysisResult:
-    latest_message: Optional[str]
-    input_box_pos: Optional[Tuple[int, int]]
-    send_button_pos: Optional[Tuple[int, int]]
-    mode: VisionMode
-    raw_response: str
-    timestamp: float
+class TapTarget:
+    element_name: str
+    x: int
+    y: int
+    confidence: float
 
-class OmniVisionAnalyzer:
-    """全能视觉分析器 - VLM + 自动降级"""
-    
-    def __init__(self, device_id=None, gpt4o_api_key=None, deepseek_api_key=None, enable_local_vlm=False, timeout=10.0):
-        self.device_id = device_id
-        self.gpt4o_api_key = gpt4o_api_key
-        self.deepseek_api_key = deepseek_api_key
-        self.enable_local_vlm = enable_local_vlm
-        self.timeout = timeout
-        
-        self.device = None
-        if HAS_U2 and device_id:
-            try:
-                self.device = u2.connect(device_id)
-                logger.info(f"Connected to device: {device_id}")
-            except Exception as e:
-                logger.warning(f"Failed to connect: {e}")
-        
-        self.ocr = None
-        if HAS_OCR:
-            try:
-                self.ocr = easyocr.Reader(['ch_sim', 'en'])
-                logger.info("EasyOCR initialized")
-            except Exception as e:
-                logger.warning(f"EasyOCR init failed: {e}")
-        
-        self.http_client = None
-        if HAS_HTTPX:
-            self.http_client = httpx.AsyncClient(timeout=timeout)
-    
-    async def analyze_screen(self) -> ScreenAnalysisResult:
-        """分析屏幕"""
-        screenshot = await self._take_screenshot()
-        if screenshot is None:
-            return await self._fallback_ocr_analysis()
-        
-        result = await self._try_vlm_analysis(screenshot)
-        if result is not None:
-            return result
-        
-        logger.warning("VLM failed, falling back to OCR")
-        return await self._fallback_ocr_analysis(screenshot)
-    
-    async def _take_screenshot(self) -> Optional[Image.Image]:
-        """截取屏幕"""
-        try:
-            if self.device is None:
-                return None
-            screenshot_bytes = self.device.screenshot(format='png')
-            return Image.open(io.BytesIO(screenshot_bytes))
-        except Exception as e:
-            logger.error(f"Screenshot failed: {e}")
-            return None
-    
-    async def _try_vlm_analysis(self, screenshot: Image.Image) -> Optional[ScreenAnalysisResult]:
-        """尝试 VLM 分析"""
-        if self.enable_local_vlm:
-            result = await self._analyze_with_local_vlm(screenshot)
-            if result: return result
-        
-        if self.gpt4o_api_key:
-            result = await self._analyze_with_gpt4o(screenshot)
-            if result: return result
-        
-        if self.deepseek_api_key:
-            result = await self._analyze_with_deepseek(screenshot)
-            if result: return result
-        
-        return None
-    
-    async def _analyze_with_local_vlm(self, screenshot: Image.Image) -> Optional[ScreenAnalysisResult]:
-        """本地 VLM"""
-        try:
-            logger.info("Local VLM analyzing...")
-            return None
-        except Exception as e:
-            logger.error(f"Local VLM failed: {e}")
-            return None
-    
-    async def _analyze_with_gpt4o(self, screenshot: Image.Image) -> Optional[ScreenAnalysisResult]:
-        """GPT-4o 分析"""
-        try:
-            if not HAS_HTTPX or not self.http_client:
-                return None
-            
-            img_bytes = io.BytesIO()
-            screenshot.save(img_bytes, format='PNG')
-            img_base64 = base64.b64encode(img_bytes.getvalue()).decode()
-            
-            response = await asyncio.wait_for(
-                self.http_client.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    json={
-                        "model": "gpt-4-vision-preview",
-                        "messages": [{
-                            "role": "user",
-                            "content": [{
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/png;base64,{img_base64}"}
-                            }, {
-                                "type": "text",
-                                "text": self._get_prompt()
-                            }]
-                        }]
-                    },
-                    headers={"Authorization": f"Bearer {self.gpt4o_api_key}", "Content-Type": "application/json"}
-                ),
-                timeout=self.timeout
-            )
-            
-            result_text = response.json()["choices"][0]["message"]["content"]
-            return self._parse_response(result_text, VisionMode.CLOUD_GPT4O)
-        except asyncio.TimeoutError:
-            logger.warning("GPT-4o timeout")
-            return None
-        except Exception as e:
-            logger.error(f"GPT-4o failed: {e}")
-            return None
-    
-    async def _analyze_with_deepseek(self, screenshot: Image.Image) -> Optional[ScreenAnalysisResult]:
-        """DeepSeek 分析"""
-        try:
-            if not HAS_HTTPX or not self.http_client:
-                return None
-            
-            img_bytes = io.BytesIO()
-            screenshot.save(img_bytes, format='PNG')
-            img_base64 = base64.b64encode(img_bytes.getvalue()).decode()
-            
-            response = await asyncio.wait_for(
-                self.http_client.post(
-                    "https://api.deepseek.com/chat/completions",
-                    json={
-                        "model": "deepseek-vision",
-                        "messages": [{
-                            "role": "user",
-                            "content": [{
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/png;base64,{img_base64}"}
-                            }, {
-                                "type": "text",
-                                "text": self._get_prompt()
-                            }]
-                        }]
-                    },
-                    headers={"Authorization": f"Bearer {self.deepseek_api_key}", "Content-Type": "application/json"}
-                ),
-                timeout=self.timeout
-            )
-            
-            result_text = response.json()["choices"][0]["message"]["content"]
-            return self._parse_response(result_text, VisionMode.CLOUD_DEEPSEEK)
-        except asyncio.TimeoutError:
-            logger.warning("DeepSeek timeout")
-            return None
-        except Exception as e:
-            logger.error(f"DeepSeek failed: {e}")
-            return None
-    
-    async def _fallback_ocr_analysis(self, screenshot: Optional[Image.Image] = None) -> ScreenAnalysisResult:
-        """OCR 降级"""
-        try:
-            logger.info("Falling back to OCR...")
-            
-            if screenshot is None:
-                screenshot = await self._take_screenshot()
-            
-            if screenshot is None or self.ocr is None:
-                return ScreenAnalysisResult(None, None, None, VisionMode.FALLBACK_OCR, "OCR unavailable", time.time())
-            
-            results = self.ocr.readtext(np.array(screenshot))
-            
-            latest_message = None
-            send_button_pos = None
-            
-            for (bbox, text, confidence) in results:
-                if "发送" in text or "send" in text.lower():
-                    x = int((bbox[0][0] + bbox[2][0]) / 2)
-                    y = int((bbox[0][1] + bbox[2][1]) / 2)
-                    send_button_pos = (x, y)
-                elif confidence > 0.5:
-                    latest_message = text
-            
-            input_box_pos = (screenshot.width // 2, int(screenshot.height * 0.9)) if screenshot else None
-            
-            return ScreenAnalysisResult(latest_message, input_box_pos, send_button_pos, VisionMode.FALLBACK_OCR, f"OCR: {len(results)} regions", time.time())
-        except Exception as e:
-            logger.error(f"OCR failed: {e}")
-            return ScreenAnalysisResult(None, None, None, VisionMode.FALLBACK_OCR, f"Error: {str(e)}", time.time())
-    
-    def _get_prompt(self) -> str:
-        return """分析微信截图，返回 JSON：
-{"latest_message":"最新消息","input_box":{"x":x,"y":y},"send_button":{"x":x,"y":y},"confidence":0.0}"""
-    
-    def _parse_response(self, response_text: str, mode: VisionMode) -> Optional[ScreenAnalysisResult]:
-        """解析响应"""
-        try:
-            json_start = response_text.find('{')
-            json_end = response_text.rfind('}') + 1
-            
-            if json_start == -1 or json_end == 0:
-                return None
-            
-            data = json.loads(response_text[json_start:json_end])
-            
-            input_box_pos = (data["input_box"]["x"], data["input_box"]["y"]) if data.get("input_box") else None
-            send_button_pos = (data["send_button"]["x"], data["send_button"]["y"]) if data.get("send_button") else None
-            
-            return ScreenAnalysisResult(data.get("latest_message"), input_box_pos, send_button_pos, mode, response_text, time.time())
-        except Exception as e:
-            logger.error(f"Parse failed: {e}")
-            return None
-    
-    async def click_with_bezier(self, x: int, y: int, duration: float = 0.5):
-        """贝塞尔曲线点击"""
-        if self.device is None:
-            return False
-        
-        try:
-            self.device.touch(x, y, duration=duration)
-            logger.info(f"Clicked at ({x}, {y})")
-            return True
-        except Exception as e:
-            logger.error(f"Click failed: {e}")
-            return False
-    
-    async def close(self):
-        """关闭"""
-        if self.http_client:
-            await self.http_client.aclose()
 
-_analyzer: Optional[OmniVisionAnalyzer] = None
+class BaseDeviceDriver(ABC):
+    @abstractmethod
+    async def capture_screen(self) -> Image.Image:
+        ...
 
-async def get_analyzer() -> OmniVisionAnalyzer:
-    global _analyzer
-    if _analyzer is None:
-        _analyzer = OmniVisionAnalyzer()
-    return _analyzer
+    @abstractmethod
+    async def tap_element(self, element_name: str) -> bool:
+        ...
 
-async def analyze_screen() -> ScreenAnalysisResult:
-    analyzer = await get_analyzer()
-    return await analyzer.analyze_screen()
+    @abstractmethod
+    async def type_text(self, text: str) -> bool:
+        ...
 
-async def click_at(x: int, y: int):
-    analyzer = await get_analyzer()
-    return await analyzer.click_with_bezier(x, y)
+
+def generate_bezier_curve(
+    start: tuple[int, int],
+    end: tuple[int, int],
+    steps: int = 20,
+) -> list[tuple[int, int]]:
+    """生成三次贝塞尔轨迹点，模拟非线性手势轨迹。"""
+    x0, y0 = start
+    x3, y3 = end
+
+    # 随机控制点：让轨迹有轻微弯曲
+    dx = x3 - x0
+    dy = y3 - y0
+    c1 = (x0 + int(dx * 0.3) + random.randint(-20, 20), y0 + int(dy * 0.2) + random.randint(-20, 20))
+    c2 = (x0 + int(dx * 0.7) + random.randint(-20, 20), y0 + int(dy * 0.8) + random.randint(-20, 20))
+
+    pts: list[tuple[int, int]] = []
+    for i in range(max(2, steps)):
+        t = i / (steps - 1)
+        x = (1 - t) ** 3 * x0 + 3 * (1 - t) ** 2 * t * c1[0] + 3 * (1 - t) * t**2 * c2[0] + t**3 * x3
+        y = (1 - t) ** 3 * y0 + 3 * (1 - t) ** 2 * t * c1[1] + 3 * (1 - t) * t**2 * c2[1] + t**3 * y3
+        pts.append((int(x), int(y)))
+    return pts
+
+
+class VLM_Android_Driver(BaseDeviceDriver):
+    """通过 ADB + 本地 VLM 完成视觉定位和触控注入。"""
+
+    def __init__(
+        self,
+        device_id: Optional[str] = None,
+        vlm_base_url: Optional[str] = None,
+        vlm_model: Optional[str] = None,
+        timeout_sec: float = 10.0,
+    ):
+        self.device_id = device_id or os.getenv("ANDROID_DEVICE_ID", "")
+        self.vlm_base_url = vlm_base_url or os.getenv("VLM_BASE_URL", "http://127.0.0.1:8000")
+        self.vlm_model = vlm_model or os.getenv("VLM_MODEL", "Qwen-VL-Max")
+        self.timeout_sec = timeout_sec
+
+    def _adb_prefix(self) -> list[str]:
+        cmd = ["adb"]
+        if self.device_id:
+            cmd += ["-s", self.device_id]
+        return cmd
+
+    async def _run_adb(self, args: list[str]) -> bytes:
+        cmd = self._adb_prefix() + args
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        out, err = await proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(f"adb failed: {' '.join(cmd)} | {err.decode(errors='ignore')}")
+        return out
+
+    async def capture_screen(self) -> Image.Image:
+        raw = await self._run_adb(["exec-out", "screencap", "-p"])
+        try:
+            img = Image.open(io.BytesIO(raw)).convert("RGB")
+            return img
+        except Exception as e:
+            raise RuntimeError(f"decode screenshot failed: {e}")
+
+    async def _locate_element_with_vlm(self, element_name: str, image: Image.Image) -> TapTarget:
+        buff = io.BytesIO()
+        image.save(buff, format="PNG")
+        b64 = base64.b64encode(buff.getvalue()).decode("utf-8")
+
+        prompt = (
+            "你是移动端 UI Grounding 模型。"
+            "请在截图中找到目标元素并仅输出 JSON："
+            "{\"x\":int,\"y\":int,\"confidence\":float,\"reason\":str}。"
+            f"目标元素：{element_name}。"
+        )
+
+        payload = {
+            "model": self.vlm_model,
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+                    ],
+                }
+            ],
+        }
+
+        async with httpx.AsyncClient(timeout=self.timeout_sec) as client:
+            r = await client.post(f"{self.vlm_base_url}/v1/chat/completions", json=payload)
+            r.raise_for_status()
+            data = r.json()
+
+        content = data["choices"][0]["message"]["content"]
+        obj = json.loads(content)
+        x = int(obj.get("x", -1))
+        y = int(obj.get("y", -1))
+        conf = float(obj.get("confidence", 0.0))
+        if x < 0 or y < 0:
+            raise RuntimeError(f"vlm locate invalid: {content}")
+
+        return TapTarget(element_name=element_name, x=x, y=y, confidence=conf)
+
+    async def _inject_tap(self, x: int, y: int) -> bool:
+        # 先走一段曲线滑动，再落点轻触，模拟稳定的人类手势（用于测试鲁棒性）
+        start = (x + random.randint(-60, 60), y + random.randint(-60, 60))
+        points = generate_bezier_curve(start, (x, y), steps=8)
+
+        for i in range(len(points) - 1):
+            (x1, y1), (x2, y2) = points[i], points[i + 1]
+            dur = random.randint(18, 35)
+            await self._run_adb([
+                "shell",
+                "input",
+                "swipe",
+                str(x1),
+                str(y1),
+                str(x2),
+                str(y2),
+                str(dur),
+            ])
+            await asyncio.sleep(random.uniform(0.006, 0.018))
+
+        # 最终 tap 前加轻微 jitter
+        await asyncio.sleep(random.uniform(0.008, 0.028))
+        await self._run_adb(["shell", "input", "tap", str(x), str(y)])
+        return True
+
+    async def tap_element(self, element_name: str) -> bool:
+        img = await self.capture_screen()
+        target = await self._locate_element_with_vlm(element_name, img)
+        if target.confidence < 0.2:
+            logger.warning("low confidence target: %s", target)
+        return await self._inject_tap(target.x, target.y)
+
+    async def type_text(self, text: str) -> bool:
+        # 先点击输入框（视觉定位）
+        await self.tap_element("输入框")
+        await asyncio.sleep(random.uniform(0.05, 0.12))
+
+        # Android input 对空格与特殊字符处理较弱，做最小转义
+        safe = text.replace(" ", "%s")
+
+        # 分片输入 + ms 级随机 jitter
+        chunks = [safe[i : i + 8] for i in range(0, len(safe), 8)]
+        for chunk in chunks:
+            await self._run_adb(["shell", "input", "text", chunk])
+            await asyncio.sleep(random.uniform(0.012, 0.055))
+
+        return True
+
+
+_driver: Optional[BaseDeviceDriver] = None
+
+
+def get_driver() -> BaseDeviceDriver:
+    global _driver
+    if _driver is None:
+        _driver = VLM_Android_Driver()
+    return _driver
+
+
+async def analyze_screen() -> dict:
+    """兼容历史接口：返回截图基础信息。"""
+    drv = get_driver()
+    img = await drv.capture_screen()
+    return {"width": img.width, "height": img.height}
+
+
+async def click_at(x: int, y: int) -> bool:
+    """兼容历史接口：直接坐标点击。"""
+    drv = get_driver()
+    if isinstance(drv, VLM_Android_Driver):
+        return await drv._inject_tap(x, y)
+    return False
