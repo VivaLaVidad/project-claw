@@ -50,9 +50,27 @@ services:
     container_name: project-claw-redis
     ports:
       - "6379:6379"
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    mem_limit: 384m
     volumes:
       - redis_data:/data
+    networks:
+      - project-claw-network
+    restart: unless-stopped
+
+  # Postgres：交易与台账持久化
+  postgres:
+    image: postgres:16-alpine
+    container_name: project-claw-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-project_claw}
+    mem_limit: 768m
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     networks:
       - project-claw-network
     restart: unless-stopped
@@ -127,4 +145,5 @@ volumes:
   logs:
   openclaw_config:
   redis_data:
+  postgres_data:
   grafana_data:
