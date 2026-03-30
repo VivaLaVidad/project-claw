@@ -32,8 +32,8 @@ ENV SOCIAL_ENABLED="0"
 ENV HUB_JWT_SECRET="claw-change-in-prod"
 ENV HUB_MERCHANT_KEY="merchant-shared-key"
 
-# 暴露端口
-EXPOSE 8765
+# 暴露端口（Railway 会注入 PORT，默认 8080）
+EXPOSE 8080
 
-# 启动命令
-CMD ["uvicorn", "cloud_server.signaling_hub:app", "--host", "0.0.0.0", "--port", "8765"]
+# 启动命令（必须使用动态 PORT，避免 healthcheck 失败）
+CMD ["sh", "-c", "uvicorn cloud_server.signaling_hub:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --log-level info"]
