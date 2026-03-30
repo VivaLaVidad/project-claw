@@ -1,196 +1,313 @@
-// pages/dialogue/dialogue.js - B/C Agent 多轮对话页 v4.0（完整对齐后端协议）
-const { createRequest, DialogueAPI, AgentNegotiationAPI, DialogueWSListener } = require('../../api/request');
-const ProfileManager = require('../../utils/profile');
+/**
+ * 语音对讲页面
+ * 工业级标准实现
+ */
+
+const app = getApp()
 
 Page({
   data: {
-    sessionId: '',
-    itemName: '',
-    merchantId: '',
-    turns: [],
-    inputText: '',
-    inputPrice: '',
-    isLoading: false,
-    isClosed: false,
-    autoAccepted: false,
-    wsStatus: 'connecting',
-    satisfaction: null,
-    showSatisfactionReport: false,
-    // 成交信息
-    dealPrice: null,
-    dealMerchantId: '',
+    orderId: '',
+    isConnected: false,
+    isRecording: false,
+    sessionId: null,
+    messages: [],
+    status: '未连接',
+    recordingTime: 0,
+    recordingTimer: null,
+    wsUrl: '',
+    audioContext: null
   },
 
-  _wsListener: null,
-  _dialogueAPI: null,
-  _agentAPI: null,
-  _turnIds: new Set(),
-
+  /**
+   * 页面加载
+   */
   onLoad(options) {
-    const { sessionId, itemName, merchantId, autoAccepted } = options;
+    console.log('🎤 语音对讲页面加载')
+    
     this.setData({
-      sessionId:    sessionId || '',
-      itemName:     decodeURIComponent(itemName || ''),
-      merchantId:   merchantId || 'box-001',
-      autoAccepted: autoAccepted === '1',
-    });
-    const app = getApp();
-    const request = createRequest(app.globalData.serverBase, app.globalData.token);
-    this._dialogueAPI = DialogueAPI(request);
-    this._agentAPI    = AgentNegotiationAPI(request);
-    this._startWSListener();
-    if (sessionId) this._loadSession();
-    // 已自动接受时延迟弹满意度
-    if (autoAccepted === '1') {
-      setTimeout(() => this.setData({ showSatisfactionReport: true }), 1500);
+      orderId: options.orderId || '',
+      sessionId: `voice_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    })
+
+    this.initAudio()
+  },
+
+  /**
+   * 初始化音频
+   */
+  initAudio() {
+    try {
+      this.audioContext = wx.createInnerAudioContext()
+      
+      this.audioContext.onPlay(() => {
+        console.log('🔊 音频播放开始')
+      })
+
+      this.audioContext.onError((res) => {
+        console.error('❌ 音频错误:', res)
+        wx.showToast({
+          title: '音频错误',
+          icon: 'error'
+        })
+      })
+
+      console.log('✓ 音频已初始化')
+    } catch (error) {
+      console.error('初始化音频失败:', error)
     }
   },
 
-  onUnload() {
-    if (this._wsListener) this._wsListener.disconnect();
+  /**
+   * 启动语音对讲
+   */
+  async startVoiceChat() {
+    try {
+      // 第 1 步：请求麦克风权限
+      const permRes = await new Promise((resolve, reject) => {
+        wx.requestRecordPermission({
+          success: resolve,
+          fail: reject
+        })
+      })
+
+      if (permRes.errMsg !== 'requestRecordPermission:ok') {
+        wx.showToast({
+          title: '需要麦克风权限',
+          icon: 'error'
+        })
+        return
+      }
+
+      // 第 2 步：连接 WebSocket
+      this.connectWebSocket()
+
+      this.setData({
+        isConnected: true,
+        isRecording: true,
+        status: '对讲中...'
+      })
+
+      wx.showToast({
+        title: '语音对讲已启动',
+        icon: 'success',
+        duration: 1000
+      })
+
+      console.log('✓ 语音对讲已启动')
+    } catch (error) {
+      console.error('启动语音对讲失败:', error)
+      wx.showToast({
+        title: '启动失败',
+        icon: 'error'
+      })
+    }
   },
 
-  // ── WebSocket 监听（对齐后端 /ws/a2a/client/:id）───────
-  _startWSListener() {
-    const app = getApp();
-    this._wsListener = new DialogueWSListener(
-      app.globalData.wsBase,
-      app.globalData.clientId,
-      (msg) => this._onWSMessage(msg),
-      (err) => {
-        console.error('[Dialogue] ws error', err);
-        this.setData({ wsStatus: 'disconnected' });
+  /**
+   * 连接 WebSocket
+   */
+  connectWebSocket() {
+    const wsUrl = `${app.globalData.wsBase}/ws/audio/${this.data.sessionId}`
+    
+    console.log('🔗 连接 WebSocket:', wsUrl)
+
+    wx.connectSocket({
+      url: wsUrl,
+      success: () => {
+        console.log('✓ WebSocket 连接成功')
       },
-    );
-    this._wsListener.connect();
-    this.setData({ wsStatus: 'connected' });
-  },
-
-  // ── 处理 WS 消息（对齐后端 a2a_dialogue_turn / offers）──
-  _onWSMessage(msg) {
-    const { sessionId } = this.data;
-    if (msg._msgType === 'turn') {
-      const turn = msg.turn || msg;
-      // session 过滤
-      if (sessionId && turn.session_id && turn.session_id !== sessionId) return;
-      // 去重
-      const turnId = turn.turn_id || turn.id;
-      if (turnId && this._turnIds.has(turnId)) return;
-      if (turnId) this._turnIds.add(turnId);
-
-      const turns = [...this.data.turns, turn];
-      this.setData({ turns });
-      wx.pageScrollTo({ scrollTop: 99999, duration: 200 });
-
-      // B端报价 → 计算满意度
-      if (turn.sender_role === 'MERCHANT' && turn.offered_price) {
-        const profile = ProfileManager.loadClientProfile(getApp().globalData.clientId);
-        const sat = ProfileManager.calcClientSatisfaction(profile, turn.offered_price, 20);
-        this.setData({ satisfaction: sat });
+      fail: (error) => {
+        console.error('❌ WebSocket 连接失败:', error)
+        this.setData({ status: '连接失败' })
       }
-      // 成交信号
-      if (turn.is_final || turn.status === 'DEAL') {
-        this.setData({
-          isClosed: true,
-          dealPrice: turn.offered_price || null,
-          dealMerchantId: turn.sender_id || this.data.merchantId,
-        });
-        setTimeout(() => this.setData({ showSatisfactionReport: true }), 800);
-      }
-    } else if (msg._msgType === 'offers') {
-      // 处理广播报价消息
-      if (msg.offers && msg.offers.length > 0) {
-        const best = msg.offers[0];
-        this.setData({ dealPrice: best.final_price, dealMerchantId: best.merchant_id });
-      }
-    }
-  },
+    })
 
-  // ── 加载历史会话（对齐 /a2a/dialogue/:id 返回的 {session, turns}）
-  async _loadSession() {
-    try {
-      const res = await this._dialogueAPI.getSession(this.data.sessionId);
-      const turns = res.turns || [];
-      const isClosed = res.session && res.session.status === 'CLOSED';
-      turns.forEach(t => { if (t.turn_id) this._turnIds.add(t.turn_id); });
-      this.setData({ turns, isClosed });
-      // 缓存会话
-      if (res.session) ProfileManager.saveSession(res.session);
-      wx.pageScrollTo({ scrollTop: 99999, duration: 0 });
-    } catch (e) {
-      console.error('[Dialogue] load session failed:', e);
-    }
-  },
+    // WebSocket 打开
+    wx.onSocketOpen(() => {
+      console.log('✓ WebSocket 已打开')
+      this.setData({ status: '已连接' })
+      this.startRecording()
+    })
 
-  // ── UI ─────────────────────────────────────────────────
-  onInputText(e)  { this.setData({ inputText:  e.detail.value }); },
-  onInputPrice(e) { this.setData({ inputPrice: e.detail.value }); },
-
-  // ── 发送对话轮（对齐 /a2a/dialogue/client_turn）─────────
-  async onSendTurn() {
-    const { sessionId, inputText, inputPrice, isLoading, isClosed } = this.data;
-    if (isLoading || isClosed) return;
-    if (!inputText.trim()) { wx.showToast({ title: '请输入内容', icon: 'none' }); return; }
-    const app = getApp();
-    this.setData({ isLoading: true });
-    try {
-      await this._dialogueAPI.clientTurn({
-        sessionId,
-        clientId:      app.globalData.clientId,
-        text:          inputText.trim(),
-        expectedPrice: parseFloat(inputPrice) || null,
-      });
-      this.setData({ inputText: '', inputPrice: '' });
-    } catch (e) {
-      wx.showToast({ title: e.msg || '发送失败', icon: 'none' });
-    } finally {
-      this.setData({ isLoading: false });
-    }
-  },
-
-  // ── 关闭对话（对齐 /a2a/dialogue/:id/close）────────────
-  async onCloseSession() {
-    wx.showModal({
-      title: '确认关闭', content: '确定结束本次对话吗？', confirmColor: '#e94560',
-      success: async (res) => {
-        if (!res.confirm) return;
+    // WebSocket 消息
+    wx.onSocketMessage((res) => {
+      if (typeof res.data === 'string') {
         try {
-          await this._dialogueAPI.close(this.data.sessionId);
-          this.setData({ isClosed: true });
-          if (this._wsListener) this._wsListener.disconnect();
-          this.setData({ showSatisfactionReport: true });
-        } catch (e) {
-          wx.showToast({ title: '关闭失败', icon: 'none' });
+          const data = JSON.parse(res.data)
+          if (data.type === 'audio') {
+            this.playAudio(data.data)
+          }
+        } catch (error) {
+          console.error('解析消息失败:', error)
         }
-      },
-    });
+      }
+    })
+
+    // WebSocket 错误
+    wx.onSocketError(() => {
+      console.error('❌ WebSocket 错误')
+      this.setData({ status: '连接错误' })
+    })
+
+    // WebSocket 关闭
+    wx.onSocketClose(() => {
+      console.log('✓ WebSocket 已关闭')
+      this.setData({ isConnected: false, isRecording: false, status: '已断开' })
+    })
   },
 
-  // ── 满意度上报（驱动 B端 Agent 学习，对齐 /a2a/dialogue/satisfaction）
-  async onSubmitSatisfaction(e) {
-    const score = parseInt(e.currentTarget.dataset.score);
-    const { sessionId, satisfaction } = this.data;
-    const app = getApp();
+  /**
+   * 开始录音
+   */
+  startRecording() {
     try {
-      await this._agentAPI.reportSatisfaction({
-        sessionId,
-        clientId:   app.globalData.clientId,
-        score,
-        priceScore: satisfaction ? satisfaction.price : score,
-        timeScore:  satisfaction ? satisfaction.time  : score,
-      });
-      wx.showToast({ title: '感谢反馈！Agent 已学习', icon: 'success' });
-    } catch (e) {
-      wx.showToast({ title: '反馈已记录', icon: 'success' });
+      const recorder = wx.getRecorderManager()
+
+      recorder.onStart(() => {
+        console.log('🎙️ 录音开始')
+        this.startRecordingTimer()
+      })
+
+      recorder.onFrameRecorded((res) => {
+        const { frameBuffer } = res
+        
+        // 发送音频帧到服务器
+        wx.sendSocketMessage({
+          data: frameBuffer,
+          success: () => {
+            console.log('📤 音频帧已发送')
+          },
+          fail: (error) => {
+            console.error('发送音频帧失败:', error)
+          }
+        })
+      })
+
+      recorder.onStop((res) => {
+        console.log('🛑 录音停止')
+        this.stopRecordingTimer()
+      })
+
+      recorder.onError((error) => {
+        console.error('❌ 录音错误:', error)
+        wx.showToast({
+          title: '录音错误',
+          icon: 'error'
+        })
+      })
+
+      // 开始录音
+      recorder.start({
+        duration: 60000,
+        sampleRate: 16000,
+        numberOfChannels: 1,
+        encodeBitRate: 96000,
+        audioSource: 'mic'
+      })
+
+      console.log('✓ 录音已启动')
+    } catch (error) {
+      console.error('启动录音失败:', error)
     }
-    this.setData({ showSatisfactionReport: false });
   },
 
-  onDismissSatisfaction() { this.setData({ showSatisfactionReport: false }); },
+  /**
+   * 播放音频
+   */
+  playAudio(audioData) {
+    try {
+      if (!this.audioContext) {
+        this.initAudio()
+      }
 
-  // ── 格式化时间 ─────────────────────────────────────────
-  formatTime(ts) {
-    const d = new Date(Number(ts) * 1000);
-    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      // 将 base64 转换为可播放的格式
+      this.audioContext.src = `data:audio/wav;base64,${audioData}`
+      this.audioContext.play()
+
+      console.log('🔊 播放音频')
+    } catch (error) {
+      console.error('播放音频失败:', error)
+    }
   },
-});
+
+  /**
+   * 停止语音对讲
+   */
+  stopVoiceChat() {
+    try {
+      // 关闭 WebSocket
+      wx.closeSocket()
+
+      // 停止录音
+      const recorder = wx.getRecorderManager()
+      recorder.stop()
+
+      this.setData({
+        isConnected: false,
+        isRecording: false,
+        status: '已结束'
+      })
+
+      wx.showToast({
+        title: '语音对讲已结束',
+        icon: 'success',
+        duration: 1000
+      })
+
+      console.log('✓ 语音对讲已停止')
+
+      // 返回上一页
+      setTimeout(() => {
+        wx.navigateBack()
+      }, 1000)
+    } catch (error) {
+      console.error('停止语音对讲失败:', error)
+    }
+  },
+
+  /**
+   * 开始录音计时
+   */
+  startRecordingTimer() {
+    this.data.recordingTimer = setInterval(() => {
+      this.setData({
+        recordingTime: this.data.recordingTime + 1
+      })
+    }, 1000)
+  },
+
+  /**
+   * 停止录音计时
+   */
+  stopRecordingTimer() {
+    if (this.data.recordingTimer) {
+      clearInterval(this.data.recordingTimer)
+      this.data.recordingTimer = null
+    }
+  },
+
+  /**
+   * 格式化时间
+   */
+  formatTime(seconds) {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  },
+
+  /**
+   * 页面卸载
+   */
+  onUnload() {
+    if (this.data.isConnected) {
+      wx.closeSocket()
+    }
+    
+    if (this.audioContext) {
+      this.audioContext.destroy()
+    }
+
+    this.stopRecordingTimer()
+  }
+})

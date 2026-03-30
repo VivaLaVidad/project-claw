@@ -1,79 +1,55 @@
-<!-- pages/dialogue/dialogue.wxml v3.0 -->
+<!--语音对讲页面-->
 <view class="container">
-
-  <!-- 顶部 -->
-  <view class="dialogue-header">
-    <view class="dh-left">
-      <text class="dh-item">{{itemName || '智能谈判'}}</text>
-      <text class="dh-merchant">🏪 {{merchantId}}</text>
+  <!-- 状态栏 -->
+  <view class="status-bar">
+    <view class="status-content">
+      <view class="status-indicator" style="background: {{isConnected ? '#52c41a' : '#999'}}"></view>
+      <text class="status-text">{{status}}</text>
     </view>
-    <view class="dh-right">
-      <view class="ws-badge ws-{{wsStatus}}">
-        <view class="ws-dot"></view>
-        <text>{{wsStatus === 'connected' ? '实时' : '断开'}}</text>
-      </view>
-      <view wx:if="{{!isClosed}}" class="close-btn" bindtap="onCloseSession">结束</view>
+    <view class="recording-time" wx:if="{{isRecording}}">
+      {{formatTime(recordingTime)}}
     </view>
   </view>
 
-  <!-- 满意度展示 -->
-  <view wx:if="{{satisfaction}}" class="satisfaction-bar">
-    <text class="sat-label">满意度</text>
-    <view class="sat-bar-wrap">
-      <view class="sat-bar-fill" style="width:{{satisfaction.overall}}%"></view>
-    </view>
-    <text class="sat-score">{{satisfaction.overall}}%</text>
-  </view>
-
-  <!-- 对话流 -->
-  <view class="turns-wrap">
-    <view wx:if="{{turns.length === 0}}" class="turns-empty">
-      <text class="empty-icon">💬</text>
-      <text class="empty-text">Agent 正在初始化谈判...</text>
-    </view>
-
-    <view wx:for="{{turns}}" wx:key="turn_id" class="turn-row turn-{{item.sender_role === 'CLIENT' ? 'right' : 'left'}}">
-      <view class="avatar avatar-{{item.sender_role === 'CLIENT' ? 'client' : 'merchant'}}">
-        <text>{{item.sender_role === 'CLIENT' ? '👤' : '🤖'}}</text>
-      </view>
-      <view class="bubble-wrap">
-        <view class="bubble bubble-{{item.sender_role === 'CLIENT' ? 'client' : 'merchant'}}">
-          <text class="bubble-text">{{item.text}}</text>
-          <view wx:if="{{item.offered_price}}" class="price-tag">
-            <text class="price-tag-label">报价</text>
-            <text class="price-tag-val">¥{{item.offered_price}}</text>
-          </view>
-          <view wx:if="{{item.is_final}}" class="deal-badge">✅ 成交</view>
-        </view>
-        <text class="bubble-time">{{item.ts ? formatTime(item.ts) : ''}}</text>
+  <!-- 主要内容 -->
+  <view class="main-content">
+    <!-- 未连接状态 -->
+    <view wx:if="{{!isConnected}}" class="state-container">
+      <view class="state-icon">🎤</view>
+      <text class="state-title">语音对讲</text>
+      <text class="state-desc">点击下方按钮开始对讲</text>
+      <view class="order-info">
+        <text>订单: {{orderId}}</text>
       </view>
     </view>
-  </view>
 
-  <!-- 已关闭提示 -->
-  <view wx:if="{{isClosed}}" class="closed-tip">对话已结束</view>
-
-  <!-- 输入区 -->
-  <view wx:if="{{!isClosed}}" class="input-bar">
-    <input class="input-text" placeholder="输入内容或出价…" value="{{inputText}}"
-      bindinput="onInputText" confirm-type="send" bindconfirm="onSendTurn" />
-    <input class="input-price" placeholder="出价" value="{{inputPrice}}"
-      bindinput="onInputPrice" type="digit" />
-    <button class="send-btn" bindtap="onSendTurn" loading="{{isLoading}}">发送</button>
-  </view>
-
-</view>
-
-<!-- 满意度上报弹层 -->
-<view wx:if="{{showSatisfactionReport}}" class="sat-modal-mask">
-  <view class="sat-modal">
-    <text class="sat-modal-title">🎉 谈判完成！</text>
-    <text class="sat-modal-sub">你的反馈帮助 Agent 变得更智能</text>
-    <view class="sat-btns">
-      <view class="sat-btn" bindtap="onSubmitSatisfaction" data-score="100">😍 很满意</view>
-      <view class="sat-btn sat-btn-mid" bindtap="onSubmitSatisfaction" data-score="70">😊 还行</view>
-      <view class="sat-btn sat-btn-bad" bindtap="onSubmitSatisfaction" data-score="30">😕 不满意</view>
+    <!-- 连接中状态 -->
+    <view wx:else class="state-container">
+      <view class="pulse-container">
+        <view class="pulse"></view>
+        <view class="pulse"></view>
+        <view class="pulse"></view>
+      </view>
+      <text class="state-title">对讲中</text>
+      <text class="state-desc">请说话...</text>
     </view>
-    <view class="sat-skip" bindtap="onDismissSatisfaction">跳过</view>
+  </view>
+
+  <!-- 操作按钮 -->
+  <view class="action-buttons">
+    <button 
+      wx:if="{{!isConnected}}" 
+      class="btn-start" 
+      bindtap="startVoiceChat"
+    >
+      启动对讲
+    </button>
+    <button 
+      wx:else 
+      class="btn-stop" 
+      bindtap="stopVoiceChat"
+    >
+      结束对讲
+    </button>
   </view>
 </view>

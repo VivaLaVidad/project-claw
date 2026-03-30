@@ -1,208 +1,91 @@
-<!-- pages/index/index.wxml v4.0 工业级重设计 -->
-<view class="page-bg">
+<!--首页 - 订单列表-->
 <view class="container">
-
-  <!-- ══ 顶部品牌栏 ══ -->
-  <view class="hero-bar">
-    <view class="hero-brand">
-      <view class="logo-wrap">
-        <text class="hero-logo">🦞</text>
+  <!-- 头部 -->
+  <view class="header">
+    <view class="header-content">
+      <view class="greeting">
+        <text class="greeting-text">欢迎回来</text>
+        <text class="user-name">{{userInfo?.nickname || '用户'}}</text>
       </view>
-      <view class="hero-text">
-        <text class="hero-title">PROJECT CLAW</text>
-        <text class="hero-sub">AI 智能砍价引擎</text>
-      </view>
-    </view>
-    <view class="header-right">
-      <view class="online-count" wx:if="{{serverStatus === 'online'}}">
-        <view class="online-dot"></view>
-        <text class="online-num">{{onlineMerchants || 0}} 商家</text>
-      </view>
-      <view class="status-pill {{serverStatus === 'online' ? 'pill-on' : 'pill-off'}}">
-        <text>{{serverStatus === 'online' ? '● 在线' : '○ 离线'}}</text>
+      <view class="user-avatar" bindtap="showUserMenu">
+        <image src="{{userInfo?.avatar || '/assets/default-avatar.png'}}" mode="aspectFill"></image>
       </view>
     </view>
   </view>
 
-  <!-- ══ 搜索主卡片 ══ -->
-  <view class="search-card">
-    <view class="search-label">我想要</view>
-    <view class="input-row">
-      <text class="input-icon">🛍</text>
-      <input
-        class="main-input"
-        placeholder="商品名（如：牛肉面、龙虾、奶茶）"
-        placeholder-class="input-ph"
-        value="{{itemName}}"
-        bindinput="onItemNameInput"
-        bindfocus="onToggleHistory"
-        maxlength="32"
-      />
-      <view wx:if="{{itemName}}" class="clear-btn" bindtap="onClearItem">✕</view>
+  <!-- 快速操作 -->
+  <view class="quick-actions">
+    <view class="action-btn" bindtap="createOrder">
+      <view class="action-icon">➕</view>
+      <text>新建订单</text>
     </view>
-
-    <!-- 搜索历史下拉 -->
-    <view wx:if="{{showHistory && searchHistory.length > 0}}" class="history-drop">
-      <view class="history-hd">
-        <text class="history-hd-text">最近搜索</text>
-        <text class="history-clear" bindtap="onClearHistory">清除</text>
-      </view>
-      <view class="history-chips">
-        <view wx:for="{{searchHistory}}" wx:key="*this"
-          class="h-chip" bindtap="onSelectHistory" data-item="{{item}}">
-          {{item}}
-        </view>
-      </view>
-    </view>
-
-    <view class="input-sep"></view>
-
-    <view class="input-row">
-      <text class="input-icon">💴</text>
-      <input
-        class="main-input"
-        placeholder="预算上限（元）"
-        placeholder-class="input-ph"
-        value="{{expectedPrice}}"
-        bindinput="onPriceInput"
-        type="digit"
-        maxlength="8"
-      />
-      <view class="price-unit">元</view>
-    </view>
-
-    <!-- 主 CTA -->
-    <button
-      class="btn-main {{isLoading || autoNegotiating ? 'btn-loading' : ''}}"
-      bindtap="onAutoNegotiate"
-      disabled="{{isLoading || autoNegotiating}}"
-    >
-      <text wx:if="{{!autoNegotiating}}">🤖  Agent 全自动砍价</text>
-      <view wx:else class="btn-spinner-row">
-        <view class="btn-spinner"></view>
-        <text>砍价中...</text>
-      </view>
-    </button>
-
-    <view class="btn-row">
-      <button class="btn-sec" bindtap="onStartDialogue" disabled="{{isLoading}}">
-        <text class="btn-sec-icon">💬</text> 手动谈判
-      </button>
-      <button class="btn-sec btn-sec-blue" bindtap="onBroadcastIntent" disabled="{{isLoading}}">
-        <text class="btn-sec-icon">📡</text> 快速广播
-      </button>
+    <view class="action-btn" bindtap="loadOrders" data-refresh="true">
+      <view class="action-icon">🔄</view>
+      <text>刷新</text>
     </view>
   </view>
 
-  <!-- ══ Agent 实时日志 ══ -->
-  <view wx:if="{{negotiationLog.length > 0}}" class="log-card">
-    <view class="log-hd">
-      <view class="log-hd-dot"></view>
-      <text class="log-hd-text">Agent 实时推演</text>
+  <!-- 订单列表 -->
+  <view class="orders-section">
+    <view class="section-title">
+      <text>我的订单</text>
+      <text class="order-count">{{orders.length}}</text>
     </view>
-    <view wx:for="{{negotiationLog}}" wx:key="time" class="log-row log-row-{{item.type}}">
-      <text class="log-icon">
-        {{item.type === 'deal' ? '✅' : item.type === 'warn' ? '⚠️' : item.type === 'info' ? '💡' : '🤖'}}
-      </text>
-      <text class="log-text">{{item.text}}</text>
-      <text class="log-time">{{item.time}}</text>
-    </view>
-  </view>
 
-  <!-- ══ 报价结果 ══ -->
-  <view wx:if="{{recentOffers.length > 0}}" class="offers-section">
-    <view class="section-hd">
-      <text class="section-title">收到 {{recentOffers.length}} 个报价</text>
-      <text class="section-sub">按性价比排序</text>
+    <!-- 加载状态 -->
+    <view wx:if="{{loading && orders.length === 0}}" class="loading">
+      <view class="spinner"></view>
+      <text>加载中...</text>
     </view>
-    <view wx:for="{{recentOffers}}" wx:key="merchant_id"
-      class="offer-card {{index === 0 ? 'offer-best' : ''}}">
-      <view wx:if="{{index === 0}}" class="best-badge">最优</view>
-      <view class="offer-main">
-        <view class="offer-left">
-          <text class="offer-merchant">{{item.merchant_id}}</text>
-          <text class="offer-desc">{{item.reply_text || '期待您的光临'}}</text>
-          <view class="offer-tags">
-            <view class="otag otag-score">⭐ {{item.match_score ? item.match_score.toFixed(1) : '-'}}</view>
-            <view class="otag otag-time">🕐 {{item.eta_minutes || 20}}分钟</view>
-            <view wx:for="{{item.offer_tags}}" wx:key="*this" wx:for-item="tag" class="otag otag-green">{{tag}}</view>
+
+    <!-- 空状态 -->
+    <view wx:elif="{{!loading && orders.length === 0}}" class="empty-state">
+      <view class="empty-icon">📭</view>
+      <text class="empty-text">暂无订单</text>
+      <view class="empty-action">
+        <button class="btn-primary" bindtap="createOrder">创建第一个订单</button>
+      </view>
+    </view>
+
+    <!-- 订单列表 -->
+    <view wx:else class="orders-list">
+      <view wx:for="{{orders}}" wx:key="order_id" class="order-card" data-order-id="{{item.order_id}}">
+        <!-- 订单头部 -->
+        <view class="order-header">
+          <view class="order-id">订单 #{{item.order_id}}</view>
+          <view class="order-status" style="color: {{item.status === 'completed' ? '#52c41a' : '#faad14'}}">
+            {{item.status === 'completed' ? '已完成' : '进行中'}}
           </view>
         </view>
-        <view class="offer-right">
-          <text class="offer-price">¥{{item.final_price}}</text>
-          <view class="offer-btn" bindtap="_showBestOffer" data-offer="{{item}}" data-name="{{itemName}}">
-            立即下单
+
+        <!-- 订单内容 -->
+        <view class="order-content">
+          <view class="order-info">
+            <text class="label">金额:</text>
+            <text class="value">¥{{item.amount}}</text>
           </view>
+          <view class="order-info">
+            <text class="label">时间:</text>
+            <text class="value">{{item.created_at}}</text>
+          </view>
+        </view>
+
+        <!-- 订单操作 -->
+        <view class="order-actions">
+          <button class="btn-secondary" bindtap="viewOrderDetail" data-order-id="{{item.order_id}}">
+            查看详情
+          </button>
+          <button class="btn-primary" bindtap="startVoiceChat" data-order-id="{{item.order_id}}">
+            语音对讲
+          </button>
         </view>
       </view>
     </view>
-  </view>
 
-  <!-- ══ 偏好设置 ══ -->
-  <view class="pref-card">
-    <view class="pref-hd" bindtap="onToggleProfile">
-      <view class="pref-hd-left">
-        <text class="pref-icon">⚙️</text>
-        <text class="pref-title">我的偏好</text>
-        <text class="pref-sub">影响 Agent 谈判策略</text>
-      </view>
-      <text class="pref-arrow">{{showProfilePanel ? '▲' : '▼'}}</text>
-    </view>
-    <block wx:if="{{showProfilePanel && profile}}">
-      <view class="pref-body">
-        <view class="pref-row">
-          <view class="pref-row-hd">
-            <text class="pref-lbl">预算下限</text>
-            <text class="pref-val">¥{{profile.budget_min}}</text>
-          </view>
-          <slider min="5" max="50" value="{{profile.budget_min}}" step="1"
-            data-key="budget_min" bindchange="onProfileChange"
-            activeColor="#e94560" backgroundColor="#f0f0f0" block-size="20" />
-        </view>
-        <view class="pref-row">
-          <view class="pref-row-hd">
-            <text class="pref-lbl">预算上限</text>
-            <text class="pref-val">¥{{profile.budget_max}}</text>
-          </view>
-          <slider min="10" max="200" value="{{profile.budget_max}}" step="1"
-            data-key="budget_max" bindchange="onProfileChange"
-            activeColor="#e94560" backgroundColor="#f0f0f0" block-size="20" />
-        </view>
-        <view class="pref-row">
-          <view class="pref-row-hd">
-            <text class="pref-lbl">价格敏感度</text>
-            <text class="pref-val">{{profile.price_sensitivity * 100}}%</text>
-          </view>
-          <slider min="0" max="100" value="{{profile.price_sensitivity * 100}}" step="5"
-            data-key="price_sensitivity" bindchange="onProfileChange"
-            activeColor="#e94560" backgroundColor="#f0f0f0" block-size="20" />
-        </view>
-        <view class="pref-row">
-          <view class="pref-row-hd">
-            <text class="pref-lbl">时效要求</text>
-            <text class="pref-val">{{profile.time_urgency * 100}}%</text>
-          </view>
-          <slider min="0" max="100" value="{{profile.time_urgency * 100}}" step="5"
-            data-key="time_urgency" bindchange="onProfileChange"
-            activeColor="#e94560" backgroundColor="#f0f0f0" block-size="20" />
-        </view>
-      </view>
-    </block>
-  </view>
-
-  <!-- ══ 空状态 ══ -->
-  <view wx:if="{{recentOffers.length === 0 && negotiationLog.length === 0 && !isLoading}}" class="empty-wrap">
-    <view class="empty-card">
-      <text class="empty-icon">🦞</text>
-      <text class="empty-title">智能砍价，一触即发</text>
-      <text class="empty-desc">输入商品名 + 预算\nAgent 自动联系所有商家砍最低价</text>
-      <view class="empty-tips">
-        <view class="empty-tip"><text class="tip-dot">●</text>全自动多轮谈判</view>
-        <view class="empty-tip"><text class="tip-dot">●</text>实时报价对比</view>
-        <view class="empty-tip"><text class="tip-dot">●</text>AI 守护最低价</view>
-      </view>
+    <!-- 加载更多 -->
+    <view wx:if="{{hasMore && orders.length > 0}}" class="load-more">
+      <view wx:if="{{loading}}" class="spinner-small"></view>
+      <text>{{loading ? '加载中...' : '上拉加载更多'}}</text>
     </view>
   </view>
-
-</view><!-- /container -->
-</view><!-- /page-bg -->
+</view>
