@@ -1,0 +1,25 @@
+<view class="page">
+  <view class="card">
+    <view class="title">商家信息</view>
+    <view class="line"><text>merchant_id</text><text>{{merchantId || '-'}}</text></view>
+    <view class="line"><text>后端地址</text><text class="url">{{baseUrl}}</text></view>
+  </view>
+
+  <view class="card">
+    <view class="title">环境切换</view>
+    <button class="btn" bindtap="useRailway">使用 Railway</button>
+    <button class="btn" bindtap="useZeabur">使用 Zeabur</button>
+    <button class="btn" bindtap="useLocal">使用本地</button>
+    <input class="ipt" placeholder="https://your-domain" value="{{customBaseUrl}}" bindinput="onInputUrl"/>
+    <button class="btn ghost" bindtap="useCustom">应用自定义地址</button>
+    <button class="btn ghost" bindtap="resetDefault">恢复默认</button>
+  </view>
+
+  <view class="card" wx:if="{{device}}">
+    <view class="title">设备状态</view>
+    <view class="line"><text>WS在线</text><text>{{device.ws_online ? '在线' : '离线'}}</text></view>
+    <view class="line"><text>接单状态</text><text>{{device.accepting ? '开启' : '关闭'}}</text></view>
+  </view>
+
+  <button class="btn danger" bindtap="logout">退出登录</button>
+</view>

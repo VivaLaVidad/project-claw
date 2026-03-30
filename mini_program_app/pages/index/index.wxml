@@ -118,6 +118,8 @@
     <text class="footer-link" bindtap="goHistory">📋 历史订单</text>
     <text class="footer-sep">·</text>
     <text class="footer-link" bindtap="goPrivacy">隐私政策</text>
+    <text class="footer-sep">·</text>
+    <text class="footer-link" bindtap="goBDashboard">B端入口</text>
   </view>
 
   <view class="geek-footer" bindtap="copyDebugInfo">

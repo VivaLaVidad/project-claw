@@ -1,5 +1,5 @@
 # Zeabur deployment config
-# Docs: https://zeabur.com/docs
+# 国内直连，无需 VPN
 name: project-claw-hub
 
 build:
@@ -7,6 +7,11 @@ build:
 
 env:
   PORT: "8765"
+  LEDGER_ENABLED: "0"
+  CLEARING_ENABLED: "0"
+  SOCIAL_ENABLED: "0"
+  HUB_JWT_SECRET: "claw-prod-secret-2026-change-me"
+  HUB_MERCHANT_KEY: "merchant-prod-key-2026"
 
 ports:
   - protocol: HTTP

@@ -1,0 +1,20 @@
+<view class="page">
+  <view class="toolbar card">
+    <picker mode="selector" range="{{statuses}}" bindchange="onStatusChange">
+      <view class="picker">筛选状态：{{status || 'all'}}</view>
+    </picker>
+    <button class="btn ghost" size="mini" loading="{{loading}}" bindtap="refresh">刷新</button>
+  </view>
+
+  <block wx:for="{{items}}" wx:key="request_id">
+    <view class="card item">
+      <view class="line"><text>订单ID</text><text>{{item.request_id}}</text></view>
+      <view class="line"><text>商品</text><text>{{item.item_name || '-'}}</text></view>
+      <view class="line"><text>状态</text><text class="tag">{{item.status}}</text></view>
+      <view class="line"><text>成交价</text><text>¥{{item.final_price || 0}}</text></view>
+      <view class="line"><text>时间</text><text>{{item.executed_at || item.created_at}}</text></view>
+    </view>
+  </block>
+
+  <view wx:if="{{!items.length && !loading}}" class="empty">暂无订单</view>
+</view>

@@ -1,0 +1,9 @@
+.page{min-height:100vh;background:#f4f7fb;padding:24rpx}
+.card{background:#fff;border-radius:20rpx;padding:24rpx;margin-bottom:16rpx;box-shadow:0 4rpx 14rpx rgba(0,0,0,.05)}
+.title{font-size:32rpx;font-weight:700;color:#0f172a;margin-bottom:12rpx}
+.line{display:flex;justify-content:space-between;padding:8rpx 0;color:#334155}
+.url{font-size:22rpx;max-width:65%;text-align:right}
+.ipt{height:80rpx;background:#f8fafc;border:2rpx solid #e2e8f0;border-radius:14rpx;padding:0 20rpx;margin:10rpx 0}
+.btn{background:#2563eb;color:#fff;border-radius:14rpx;font-size:28rpx;margin-bottom:10rpx}
+.btn.ghost{background:#fff;color:#2563eb;border:2rpx solid #93c5fd}
+.btn.danger{background:#ef4444;color:#fff}

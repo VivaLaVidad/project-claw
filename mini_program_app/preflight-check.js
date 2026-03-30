@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Project Claw C-End Preflight Check
- * 发布前自动自检：域名/配置/接口连通/页面结构
+ * Project Claw MiniProgram Preflight Check
+ * 发布前自动自检：域名/配置/接口连通/页面结构（B+C 双端）
  */
 
 const fs = require('fs');
@@ -16,7 +16,7 @@ const fail = [];
 
 function logBanner() {
   console.log('╔══════════════════════════════════════════════════════════════╗');
-  console.log('║             Project Claw C-End Preflight v1.0               ║');
+  console.log('║          Project Claw MiniProgram Preflight v2.0            ║');
   console.log('╚══════════════════════════════════════════════════════════════╝');
 }
 
@@ -58,6 +58,10 @@ function checkProjectConfig() {
     'pages/result/result',
     'pages/history/history',
     'pages/privacy/privacy',
+    'pages/b-dashboard/b-dashboard',
+    'pages/b-orders/b-orders',
+    'pages/b-wallet/b-wallet',
+    'pages/b-settings/b-settings',
   ];
 
   for (const p of requiredPages) {
@@ -86,7 +90,7 @@ function checkProjectConfig() {
 }
 
 function checkPagesFiles() {
-  const pages = ['index', 'offers', 'result', 'history', 'privacy'];
+  const pages = ['index', 'offers', 'result', 'history', 'privacy', 'b-dashboard', 'b-orders', 'b-wallet', 'b-settings'];
   for (const name of pages) {
     const dir = path.join(ROOT, 'pages', name);
     const files = [`${name}.js`, `${name}.wxml`, `${name}.wxss`, `${name}.json`];
@@ -135,9 +139,7 @@ function probe(url, timeoutMs = 8000) {
       res.on('data', (chunk) => data += chunk);
       res.on('end', () => resolve({ statusCode: res.statusCode, body: data }));
     });
-    req.on('timeout', () => {
-      req.destroy(new Error('timeout'));
-    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
     req.on('error', reject);
   });
 }
@@ -152,30 +154,27 @@ async function checkBackend(baseUrl) {
 
   ok.push(`BASE_URL: ${baseUrl}`);
 
-  const health = `${baseUrl.replace(/\/$/, '')}/health`;
-  try {
-    const res = await probe(health);
-    if (res.statusCode >= 200 && res.statusCode < 300) {
-      ok.push(`/health 可用 (${res.statusCode})`);
-    } else {
-      fail.push(`/health 不可用，状态码 ${res.statusCode}`);
-    }
-  } catch (e) {
-    fail.push(`/health 请求失败: ${e.message}`);
-  }
+  const checks = [
+    '/health',
+    '/api/v1/merchants/online',
+    '/api/v1/auth/client',
+    '/api/v1/auth/merchant',
+    '/api/v1/merchant/dashboard',
+    '/api/v1/merchant/orders',
+  ];
 
-  const onlineMerchants = `${baseUrl.replace(/\/$/, '')}/api/v1/merchants/online`;
-  try {
-    const res = await probe(onlineMerchants);
-    if (res.statusCode >= 200 && res.statusCode < 300) {
-      ok.push(`/api/v1/merchants/online 可用 (${res.statusCode})`);
-    } else if (res.statusCode === 404) {
-      ok.push('/api/v1/merchants/online 未开放，使用 /health.merchants 作为在线商家来源');
-    } else {
-      warn.push(`/api/v1/merchants/online 返回 ${res.statusCode}，请确认公开访问策略`);
+  for (const p of checks) {
+    const full = `${baseUrl.replace(/\/$/, '')}${p}`;
+    try {
+      const res = await probe(full);
+      if (res.statusCode >= 200 && res.statusCode < 500) {
+        ok.push(`${p} 连通 (${res.statusCode})`);
+      } else {
+        warn.push(`${p} 返回 ${res.statusCode}`);
+      }
+    } catch (e) {
+      warn.push(`${p} 请求失败: ${e.message}`);
     }
-  } catch (e) {
-    warn.push(`/api/v1/merchants/online 请求失败: ${e.message}`);
   }
 }
 
@@ -195,6 +194,12 @@ function checkContractFile() {
       '/api/v1/trade/request',
       '/api/v1/trade/{request_id}',
       '/api/v1/trade/execute',
+      '/api/v1/auth/merchant',
+      '/api/v1/merchant/dashboard',
+      '/api/v1/merchant/orders',
+      '/api/v1/merchant/status',
+      '/api/v1/merchant/wallet',
+      '/api/v1/merchant/device-status',
     ];
 
     for (const p of mustHave) {

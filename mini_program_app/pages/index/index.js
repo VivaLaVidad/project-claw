@@ -2,7 +2,7 @@
  * Project Claw v14.3 - pages/index/index.js
  * 首页：询价表单 + 位置获取 + 健康检测
  */
-const { ensureToken, healthCheck, getOnlineMerchants, requestTrade, BASE_URL } = require('../../utils/api');
+const { ensureToken, healthCheck, getOnlineMerchants, requestTrade, getBaseUrl } = require('../../utils/api');
 
 const DEFAULT_ITEMS = [
   '招牌牛肉面', '麻辣烫', '猪脚饭', '黄焖鸡米饭',
@@ -17,7 +17,7 @@ Page({
     onlineMerchants: 0,
     healthStatus: '',
     healthOk: null,
-    envBaseUrl: BASE_URL,
+    envBaseUrl: getBaseUrl(),
     buildTag: 'c-end-v14.3',
     geoStr: '',
     _geo: null,
@@ -74,6 +74,7 @@ Page({
 
   onShow() {
     // 页面可见时重新诊断，避免冷启动瞬时网络抖动误判
+    this.setData({ envBaseUrl: getBaseUrl() });
     this._runDiagnostics();
   },
 
@@ -121,7 +122,7 @@ Page({
       } catch (e) {
         if (i === 2) {
           const detail = (e && (e.detail || e.errMsg || e.message)) || 'network_error';
-          console.warn('[Index] getOnlineMerchants failed:', detail, 'base=', BASE_URL);
+          console.warn('[Index] getOnlineMerchants failed:', detail, 'base=', getBaseUrl());
           try {
             const health = await healthCheck();
             const fallbackCount = (health && health.merchants) || 0;
@@ -287,6 +288,7 @@ Page({
   // ─── 导航 ────────────────────────────────────────────────────────────────
   goHistory() { wx.navigateTo({ url: '/pages/history/history' }); },
   goPrivacy()  { wx.navigateTo({ url: '/pages/privacy/privacy' }); },
+  goBDashboard() { wx.navigateTo({ url: '/pages/b-dashboard/b-dashboard' }); },
 
   copyDebugInfo() {
     const app = getApp();

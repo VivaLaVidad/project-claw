@@ -48,8 +48,10 @@ echo    地址: http://127.0.0.1:8765
 echo    健康检查: http://127.0.0.1:8765/health
 echo.
 
-REM 启动后端
-uvicorn cloud_server.signaling_hub:app --host 0.0.0.0 --port 8765 --reload
+REM 启动后端（默认关闭账本/清结算，避免本地未配 PostgreSQL 时启动失败）
+set LEDGER_ENABLED=0
+set CLEARING_ENABLED=0
+python -m uvicorn cloud_server.signaling_hub:app --host 127.0.0.1 --port 8765
 
 REM 清理：恢复原配置
 echo.

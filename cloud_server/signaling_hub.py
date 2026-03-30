@@ -137,6 +137,40 @@ class OrderDB:
             rows = c.execute("SELECT * FROM orders WHERE client_id=? ORDER BY created_at DESC LIMIT ?",(cid,limit)).fetchall()
         return [dict(r) for r in rows]
 
+    def by_merchant(self, mid, limit=50, status: Optional[str] = None):
+        with self._conn() as c:
+            if status:
+                rows = c.execute(
+                    "SELECT * FROM orders WHERE merchant_id=? AND status=? ORDER BY created_at DESC LIMIT ?",
+                    (mid, status, limit),
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    "SELECT * FROM orders WHERE merchant_id=? ORDER BY created_at DESC LIMIT ?",
+                    (mid, limit),
+                ).fetchall()
+        return [dict(r) for r in rows]
+
+    def merchant_today_summary(self, mid: str):
+        day_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT COUNT(1) AS cnt, COALESCE(SUM(final_price),0) AS revenue FROM orders WHERE merchant_id=? AND status='executed' AND executed_at>=?",
+                (mid, day_start),
+            ).fetchone()
+        return {
+            "today_order_count": int(row["cnt"] or 0),
+            "today_revenue": float(row["revenue"] or 0),
+        }
+
+    def merchant_pending_count(self, mid: str):
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT COUNT(1) AS cnt FROM orders WHERE merchant_id=? AND status IN ('pending','accepted')",
+                (mid,),
+            ).fetchone()
+        return int(row["cnt"] or 0)
+
 
 # -- MerchantPool ------------------------------------------------------
 class MerchantPool:
@@ -451,6 +485,7 @@ social_coordinator = SocialCoordinator(
     max_distance_m=SOCIAL_MAX_DISTANCE_M,
     match_cooldown_sec=SOCIAL_MATCH_COOLDOWN_SEC,
 ) if SOCIAL_ENABLED else None
+_MERCHANT_RUNTIME: Dict[str, dict] = defaultdict(lambda: {"accepting": True, "updated_at": 0.0})
 _LAST_SETTLEMENT_REPORT: dict = {}
 
 async def settlement_scheduler_loop():
@@ -668,6 +703,86 @@ async def api_promoter_withdraw_pay(body: dict, claims: dict = Depends(bearer_cl
 @app.get("/api/v1/merchants/online")
 async def merchants_online():
     return {"online_merchants": merchant_pool.count(), "merchant_ids": merchant_pool.ids(), "ts": time.time()}
+
+
+@app.get("/api/v1/merchant/dashboard", dependencies=[Depends(rate_guard)])
+async def api_merchant_dashboard(claims: dict = Depends(bearer_claims)):
+    if claims.get("role") != "merchant":
+        raise HTTPException(403, "merchant_token_required")
+    mid = claims["sub"]
+    summary = order_db.merchant_today_summary(mid)
+    return {
+        "ok": True,
+        "merchant_id": mid,
+        "online": mid in merchant_pool.ids(),
+        "accepting": bool(_MERCHANT_RUNTIME[mid]["accepting"]),
+        "pending_count": order_db.merchant_pending_count(mid),
+        **summary,
+        "ts": time.time(),
+    }
+
+
+@app.get("/api/v1/merchant/orders", dependencies=[Depends(rate_guard)])
+async def api_merchant_orders(limit: int = 50, status: str = "", claims: dict = Depends(bearer_claims)):
+    if claims.get("role") != "merchant":
+        raise HTTPException(403, "merchant_token_required")
+    limit = max(1, min(100, limit))
+    status = status.strip().lower()
+    status = status if status in {"pending", "accepted", "executed", "failed"} else ""
+    return {
+        "ok": True,
+        "merchant_id": claims["sub"],
+        "items": order_db.by_merchant(claims["sub"], limit=limit, status=status or None),
+    }
+
+
+@app.post("/api/v1/merchant/status", dependencies=[Depends(rate_guard)])
+async def api_merchant_status(body: dict, claims: dict = Depends(bearer_claims)):
+    if claims.get("role") != "merchant":
+        raise HTTPException(403, "merchant_token_required")
+    accepting = bool(body.get("accepting", True))
+    rec = _MERCHANT_RUNTIME[claims["sub"]]
+    rec["accepting"] = accepting
+    rec["updated_at"] = time.time()
+    return {"ok": True, "merchant_id": claims["sub"], "accepting": accepting, "updated_at": rec["updated_at"]}
+
+
+@app.get("/api/v1/merchant/wallet", dependencies=[Depends(rate_guard)])
+async def api_merchant_wallet(claims: dict = Depends(bearer_claims)):
+    if claims.get("role") != "merchant":
+        raise HTTPException(403, "merchant_token_required")
+    if not ledger_manager:
+        return {
+            "ok": True,
+            "merchant_id": claims["sub"],
+            "ledger_enabled": False,
+            "balance": 0,
+            "currency_unit": "token",
+            "is_frozen": False,
+        }
+    enough, status = await ledger_manager.check_balance(claims["sub"])
+    return {
+        "ok": True,
+        "merchant_id": claims["sub"],
+        "ledger_enabled": True,
+        "can_quote": enough,
+        **status.model_dump(),
+    }
+
+
+@app.get("/api/v1/merchant/device-status", dependencies=[Depends(rate_guard)])
+async def api_merchant_device_status(claims: dict = Depends(bearer_claims)):
+    if claims.get("role") != "merchant":
+        raise HTTPException(403, "merchant_token_required")
+    mid = claims["sub"]
+    return {
+        "ok": True,
+        "merchant_id": mid,
+        "ws_online": mid in merchant_pool.ids(),
+        "accepting": bool(_MERCHANT_RUNTIME[mid]["accepting"]),
+        "last_update": _MERCHANT_RUNTIME[mid]["updated_at"],
+        "ts": time.time(),
+    }
 
 
 @app.post("/api/v1/social/intent", dependencies=[Depends(rate_guard)])

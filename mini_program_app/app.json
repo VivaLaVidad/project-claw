@@ -4,7 +4,11 @@
     "pages/offers/offers",
     "pages/result/result",
     "pages/history/history",
-    "pages/privacy/privacy"
+    "pages/privacy/privacy",
+    "pages/b-dashboard/b-dashboard",
+    "pages/b-orders/b-orders",
+    "pages/b-wallet/b-wallet",
+    "pages/b-settings/b-settings"
   ],
   "window": {
     "navigationBarTitleText": "Project Claw",

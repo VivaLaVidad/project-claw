@@ -2,23 +2,43 @@
  * Project Claw v14.3 - utils/api.js
  * 工业级 HTTP 层：JWT 自动刷新、超时重试、WS 地址转换
  */
-const { BASE_URL } = require('./config');
+const { BASE_URL, BASE_URL_PRESETS } = require('./config');
 
-// 小程序必须在 request 合法域名白名单中配置该域名
-if (!/^https:\/\//.test(BASE_URL)) {
-  console.warn('[Config] BASE_URL 应为 https 域名，当前值:', BASE_URL);
+const BASE_URL_KEY = 'claw_base_url_override';
+const TOKEN_KEY = 'claw_token';
+const TIMEOUT_MS = 45000;
+const MAX_RETRY = 1;
+
+function getBaseUrl() {
+  return (wx.getStorageSync(BASE_URL_KEY) || BASE_URL).replace(/\/$/, '');
 }
 
-const TOKEN_KEY  = 'claw_token';
-const TIMEOUT_MS = 45000;
-const MAX_RETRY  = 1;
+function setBaseUrl(url) {
+  const v = String(url || '').trim();
+  if (!v) {
+    wx.removeStorageSync(BASE_URL_KEY);
+    return BASE_URL;
+  }
+  wx.setStorageSync(BASE_URL_KEY, v.replace(/\/$/, ''));
+  return getBaseUrl();
+}
+
+function resetBaseUrl() {
+  wx.removeStorageSync(BASE_URL_KEY);
+  return BASE_URL;
+}
+
+// 小程序必须在 request 合法域名白名单中配置该域名
+if (!/^https:\/\//.test(getBaseUrl())) {
+  console.warn('[Config] BASE_URL 应为 https 域名，当前值:', getBaseUrl());
+}
 
 // ── Token 存取 ────────────────────────────────────────────────────────────
-function getToken()   { return wx.getStorageSync(TOKEN_KEY) || ''; }
-function setToken(t)  { if (t) wx.setStorageSync(TOKEN_KEY, t); }
+function getToken() { return wx.getStorageSync(TOKEN_KEY) || ''; }
+function setToken(t) { if (t) wx.setStorageSync(TOKEN_KEY, t); }
 function clearToken() { wx.removeStorageSync(TOKEN_KEY); }
 function getWsBaseUrl() {
-  return BASE_URL.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
+  return getBaseUrl().replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
 }
 
 // ── 核心请求（支持 401 自动刷新重试） ────────────────────────────────────
@@ -30,7 +50,7 @@ function _request({ url, method = 'GET', data, auth = true, _retry = 0 }) {
       if (t) header['Authorization'] = `Bearer ${t}`;
     }
     wx.request({
-      url: `${BASE_URL}${url}`,
+      url: `${getBaseUrl()}${url}`,
       method,
       data,
       header,
@@ -120,6 +140,10 @@ function getTradeSnapshot(rid) {
 
 module.exports = {
   BASE_URL,
+  BASE_URL_PRESETS,
+  getBaseUrl,
+  setBaseUrl,
+  resetBaseUrl,
   getToken,
   setToken,
   clearToken,

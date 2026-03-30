@@ -1,0 +1,9 @@
+.page{min-height:100vh;background:#f4f7fb;padding:24rpx}
+.card{background:#fff;border-radius:20rpx;padding:24rpx;margin-bottom:20rpx;box-shadow:0 4rpx 14rpx rgba(0,0,0,.05)}
+.title{font-size:34rpx;font-weight:700;color:#0f172a;margin-bottom:18rpx}
+.ipt{height:84rpx;background:#f8fafc;border:2rpx solid #e2e8f0;border-radius:14rpx;padding:0 20rpx;margin-bottom:14rpx}
+.row{display:flex;justify-content:space-between;padding:14rpx 0;border-bottom:1rpx solid #f1f5f9;color:#334155}
+.switch-row{align-items:center;border-bottom:none}
+.btns{display:flex;flex-direction:column;gap:12rpx}
+.btn{background:#2563eb;color:#fff;border-radius:14rpx;font-size:30rpx}
+.btn.ghost{background:#fff;color:#2563eb;border:2rpx solid #93c5fd}

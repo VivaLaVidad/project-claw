@@ -1,0 +1,31 @@
+<view class="page">
+  <view class="card" wx:if="{{!ready}}">
+    <view class="title">B端商家登录</view>
+    <input class="ipt" placeholder="merchant_id" value="{{merchant_id}}" data-key="merchant_id" bindinput="onInput"/>
+    <input class="ipt" placeholder="merchant_key" password value="{{merchant_key}}" data-key="merchant_key" bindinput="onInput"/>
+    <input class="ipt" placeholder="promoter_id（可选）" value="{{promoter_id}}" data-key="promoter_id" bindinput="onInput"/>
+    <button class="btn" loading="{{loggingIn}}" bindtap="loginMerchant">登录B端</button>
+  </view>
+
+  <view wx:if="{{ready}}">
+    <view class="card">
+      <view class="title">工作台</view>
+      <view class="row"><text>商家ID</text><text>{{dashboard.merchant_id}}</text></view>
+      <view class="row"><text>在线状态</text><text>{{dashboard.online ? '在线' : '离线'}}</text></view>
+      <view class="row"><text>今日订单</text><text>{{dashboard.today_order_count}}</text></view>
+      <view class="row"><text>今日收入</text><text>¥{{dashboard.today_revenue}}</text></view>
+      <view class="row"><text>待处理</text><text>{{dashboard.pending_count}}</text></view>
+      <view class="row switch-row">
+        <text>接单开关</text>
+        <switch checked="{{dashboard.accepting}}" bindchange="toggleAccepting"/>
+      </view>
+    </view>
+
+    <view class="btns">
+      <button class="btn" bindtap="goOrders">订单列表</button>
+      <button class="btn" bindtap="goWallet">收益钱包</button>
+      <button class="btn" bindtap="goSettings">门店设置</button>
+      <button class="btn ghost" bindtap="refreshDashboard">刷新</button>
+    </view>
+  </view>
+</view>
