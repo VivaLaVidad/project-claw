@@ -2,7 +2,7 @@
 builder = "dockerfile"
 
 [deploy]
-startCommand = "uvicorn cloud_server.signaling_hub:app --host 0.0.0.0 --port $PORT --workers 1"
+startCommand = "uvicorn cloud_server.signaling_hub:app --host 0.0.0.0 --port $PORT --workers 1 --log-level info"
 healthcheckPath = "/health"
 healthcheckTimeout = 60
 restartPolicyType = "on_failure"
