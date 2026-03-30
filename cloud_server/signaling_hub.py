@@ -22,6 +22,9 @@ except Exception:
             return None
 from cloud_server.ledger_service import LedgerManager
 from cloud_server.social_coordinator import SocialCoordinator
+from cloud_server.db import init_db_schema
+from cloud_server.repositories import ClientRepository, MerchantRepository, TradeLedgerRepository
+from cloud_server.ws_connection_manager import WSConnectionManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s - %(message)s")
 logger = logging.getLogger("claw.hub")
@@ -343,7 +346,7 @@ class TradeCoordinator:
         return sorted([o for o in pool.values() if o.viable and o.final_price<=max_price], key=lambda x:x.match_score, reverse=True)
 
     async def request_bundle(self, req: TradeRequest, client_id: str) -> OfferBundle:
-        start=time.time(); self.db.upsert_request(req)
+        start=time.time(); await self.db.create_request(req)
         first_offer_at: Optional[float] = None
         # 地理过滤：仅广播给半径内的在线商家（无坐标则广播全部）
         geo_targets: Optional[List[str]] = None
@@ -432,24 +435,24 @@ class TradeCoordinator:
     async def execute(self, trade: ExecuteTrade, client_id: str) -> Tuple[bool,str]:
         ok,reason=await self._validate(trade,client_id)
         if not ok:
-            self.db.set_failed(trade.request_id,reason)
+            await self.db.mark_failed(trade.request_id,reason)
             audit("execute_rejected",request_id=trade.request_id,reason=reason)
             return False,reason
         sent=await self.merchants.send_to(trade.merchant_id,SignalEnvelope(msg_type=MsgType.EXECUTE_TRADE,sender_id="hub",payload=trade.model_dump()))
         if not sent:
-            self.db.set_failed(trade.request_id,"merchant_offline")
+            await self.db.mark_failed(trade.request_id,"merchant_offline")
             return False,"merchant_offline"
         async with self._lock:
             meta=self._meta.get(trade.request_id)
             if meta: meta.status=TradeStatus.EXECUTED
             self._executing[trade.request_id] = trade
-        self.db.set_executed(trade.request_id,trade.merchant_id,trade.offer_id,trade.final_price)
+        await self.db.mark_executed(trade.request_id,trade.merchant_id,trade.offer_id,trade.final_price)
         await self.clients.push_status(client_id,trade.request_id,"executed",{"merchant_id":trade.merchant_id,"final_price":trade.final_price})
         audit("execute_ok",request_id=trade.request_id,client_id=client_id,merchant_id=trade.merchant_id,final_price=trade.final_price)
         return True,"ok"
 
     async def history(self, client_id: str, limit: int=20) -> List[dict]:
-        return self.db.by_client(client_id,limit)
+        return await self.db.by_client(client_id,limit)
 
     async def snapshot(self, rid: str) -> dict:
         async with self._lock:
@@ -473,9 +476,11 @@ class TradeCoordinator:
                     self._executing.pop(r,None)
 
 # -- Singletons -------------------------------------------------------
-order_db      = OrderDB(DB_PATH)
-merchant_pool = MerchantPool()
+order_db      = TradeLedgerRepository()
+merchant_pool = WSConnectionManager()
 client_pool   = ClientPool()
+client_repo = ClientRepository()
+merchant_repo = MerchantRepository()
 coordinator   = TradeCoordinator(merchant_pool, client_pool, order_db)
 rate_limiter  = RateLimiter(RATE_LIMIT)
 clearing_service = ClearingService() if CLEARING_ENABLED else None
@@ -506,6 +511,8 @@ async def settlement_scheduler_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await init_db_schema()
+    await merchant_pool.start()
     asyncio.ensure_future(merchant_pool.heartbeat_loop())
     asyncio.ensure_future(coordinator.cleanup_loop())
     asyncio.ensure_future(settlement_scheduler_loop())
@@ -528,6 +535,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 async def auth_client(body: dict):
     cid = str(body.get("client_id", "")).strip()
     if not cid: raise HTTPException(400, "client_id_required")
+    await client_repo.upsert_basic(cid)
     audit("client_auth", client_id=cid)
     return {"token": jwt_issue(cid, "client"), "client_id": cid, "expires_in": JWT_EXPIRE_SEC}
 
@@ -539,6 +547,7 @@ async def auth_merchant(body: dict):
     promoter_id = str(body.get("promoter_id", "")).strip()
     if not mid: raise HTTPException(400, "merchant_id_required")
     if not hmac.compare_digest(key, MERCHANT_KEY): raise HTTPException(403, "wrong_merchant_key")
+    await merchant_repo.upsert_basic(mid, promoter_id=promoter_id)
     if ledger_manager:
         await ledger_manager.register_merchant(mid, promoter_id=promoter_id)
     audit("merchant_auth", merchant_id=mid, promoter_id=promoter_id)
@@ -710,13 +719,13 @@ async def api_merchant_dashboard(claims: dict = Depends(bearer_claims)):
     if claims.get("role") != "merchant":
         raise HTTPException(403, "merchant_token_required")
     mid = claims["sub"]
-    summary = order_db.merchant_today_summary(mid)
+    summary = await order_db.merchant_today_summary(mid)
     return {
         "ok": True,
         "merchant_id": mid,
         "online": mid in merchant_pool.ids(),
         "accepting": bool(_MERCHANT_RUNTIME[mid]["accepting"]),
-        "pending_count": order_db.merchant_pending_count(mid),
+        "pending_count": await order_db.merchant_pending_count(mid),
         **summary,
         "ts": time.time(),
     }
@@ -732,7 +741,7 @@ async def api_merchant_orders(limit: int = 50, status: str = "", claims: dict = 
     return {
         "ok": True,
         "merchant_id": claims["sub"],
-        "items": order_db.by_merchant(claims["sub"], limit=limit, status=status or None),
+        "items": await order_db.by_merchant(claims["sub"], limit=limit, status=status or None),
     }
 
 
@@ -847,7 +856,7 @@ async def api_trade_request_stream(req: TradeRequest, claims: dict = Depends(bea
                 deadline = time.time() + min(req.timeout_sec, HARD_TIMEOUT)
                 coordinator._meta[request_id] = TradeMeta(req.client_id, TradeStatus.PENDING, time.time(), deadline)
                 coordinator._pending[request_id] = {}
-        coordinator.db.upsert_request(req)
+        await coordinator.db.create_request(req)
 
         # geo 过滤复用 request_bundle 逻辑
         geo_targets: Optional[List[str]] = None
