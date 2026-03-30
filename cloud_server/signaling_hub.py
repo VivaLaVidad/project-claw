@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Tuple
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request, Header, Depends, BackgroundTasks
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 
 from contextlib import asynccontextmanager
 
@@ -25,6 +25,7 @@ from cloud_server.social_coordinator import SocialCoordinator
 from cloud_server.db import init_db_schema
 from cloud_server.repositories import ClientRepository, MerchantRepository, TradeLedgerRepository
 from cloud_server.ws_connection_manager import WSConnectionManager
+from cloud_server.data_flywheel import DataFlywheelService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s - %(message)s")
 logger = logging.getLogger("claw.hub")
@@ -490,6 +491,7 @@ social_coordinator = SocialCoordinator(
     max_distance_m=SOCIAL_MAX_DISTANCE_M,
     match_cooldown_sec=SOCIAL_MATCH_COOLDOWN_SEC,
 ) if SOCIAL_ENABLED else None
+flywheel_service = DataFlywheelService()
 _MERCHANT_RUNTIME: Dict[str, dict] = defaultdict(lambda: {"accepting": True, "updated_at": 0.0})
 _LAST_SETTLEMENT_REPORT: dict = {}
 
@@ -513,6 +515,7 @@ async def settlement_scheduler_loop():
 async def lifespan(app: FastAPI):
     await init_db_schema()
     await merchant_pool.start()
+    flywheel_service.start()
     asyncio.ensure_future(merchant_pool.heartbeat_loop())
     asyncio.ensure_future(coordinator.cleanup_loop())
     asyncio.ensure_future(settlement_scheduler_loop())
@@ -524,6 +527,7 @@ async def lifespan(app: FastAPI):
         logger.info("[Hub] ledger service initialized")
     logger.info("[Hub] v14.3.0 started")
     yield
+    flywheel_service.stop()
     logger.info("[Hub] shutdown")
 
 app = FastAPI(title="Project Claw Signaling Hub", version="14.3.0", lifespan=lifespan)
@@ -573,6 +577,30 @@ async def api_system_metrics(claims: dict = Depends(bearer_claims)):
     if social_coordinator:
         payload["social"] = await social_coordinator.metrics_snapshot()
     return payload
+
+
+@app.get("/api/v1/admin/export_dpo_dataset", dependencies=[Depends(rate_guard)])
+async def api_admin_export_dpo_dataset(force_rebuild: bool = False, claims: dict = Depends(bearer_claims)):
+    role = str(claims.get("role", ""))
+    sub = str(claims.get("sub", ""))
+    admins = {x.strip() for x in os.getenv("HUB_ADMIN_SUBS", "admin").split(",") if x.strip()}
+    if role != "admin" and sub not in admins:
+        raise HTTPException(403, "admin_required")
+
+    if force_rebuild:
+        await flywheel_service.build_dataset()
+
+    path = flywheel_service.dataset_path
+    if not path.exists():
+        meta = await flywheel_service.build_dataset()
+        if meta.get("samples", 0) == 0:
+            raise HTTPException(404, "dpo_dataset_empty")
+
+    return FileResponse(
+        path=str(path),
+        media_type="application/jsonl",
+        filename=path.name,
+    )
 
 
 @app.post("/api/v1/ledger/topup", dependencies=[Depends(rate_guard)])
