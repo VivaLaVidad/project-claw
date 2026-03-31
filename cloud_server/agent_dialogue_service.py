@@ -12,6 +12,8 @@ import httpx
 from pydantic import BaseModel
 import logging
 
+from edge_box.local_memory import get_session_manager
+
 logger = logging.getLogger(__name__)
 
 # ═══════════════════════════════════════════════════════════════
@@ -92,10 +94,12 @@ class ClientAgent:
         self.llm_client = llm_client
         self.negotiation_history = []
     
-    async def generate_opening_message(self, item_name: str, expected_price: float) -> str:
+    async def generate_opening_message(self, item_name: str, expected_price: float, priority_context: str = "") -> str:
         """生成开场白"""
         prompt = f"""
         你是一个聪明的购物者，正在与商家谈判购买 {item_name}。
+
+        最高优先级用户画像（必须优先遵循）：{priority_context or '无'}
         
         你的个性：
         - 价格敏感度：{self.profile.price_sensitivity * 100:.0f}%
@@ -111,10 +115,12 @@ class ClientAgent:
         response = await self.llm_client.chat(prompt)
         return response
     
-    async def generate_counter_offer(self, merchant_offer: str, item_name: str, expected_price: float) -> str:
+    async def generate_counter_offer(self, merchant_offer: str, item_name: str, expected_price: float, priority_context: str = "") -> str:
         """生成反价"""
         prompt = f"""
         商家的报价：{merchant_offer}
+
+        最高优先级用户画像（必须优先遵循）：{priority_context or '无'}
         
         你的预算：¥{expected_price}
         你的价格敏感度：{self.profile.price_sensitivity * 100:.0f}%
@@ -159,7 +165,7 @@ class MerchantAgent:
         self.llm_client = llm_client
         self.negotiation_history = []
     
-    async def generate_initial_offer(self, item_name: str, base_price: float, client_profile: ClientProfile) -> Dict:
+    async def generate_initial_offer(self, item_name: str, base_price: float, client_profile: ClientProfile, priority_context: str = "") -> Dict:
         """生成初始报价"""
         # 根据商家策略调整价格
         if self.profile.pricing_strategy == "aggressive":
@@ -175,6 +181,8 @@ class MerchantAgent:
         
         prompt = f"""
         你是一个商家，正在与客户谈判 {item_name} 的价格。
+
+        最高优先级用户画像（必须优先遵循）：{priority_context or '无'}
         
         你的商家风格：{self.profile.negotiation_style}
         基础价格：¥{base_price}
@@ -192,7 +200,7 @@ class MerchantAgent:
             "timestamp": time.time()
         }
     
-    async def respond_to_counter_offer(self, client_counter: str, current_offer: float, base_price: float) -> Dict:
+    async def respond_to_counter_offer(self, client_counter: str, current_offer: float, base_price: float, priority_context: str = "") -> Dict:
         """响应客户的反价"""
         # 根据谈判风格调整
         if self.profile.negotiation_style == "flexible":
@@ -207,6 +215,8 @@ class MerchantAgent:
         
         prompt = f"""
         客户说：{client_counter}
+
+        最高优先级用户画像（必须优先遵循）：{priority_context or '无'}
         
         你的当前报价：¥{current_offer:.2f}
         你的新报价：¥{new_offer:.2f}
@@ -236,6 +246,7 @@ class DialogueManager:
         self.sessions: Dict[str, DialogueSession] = {}
         self.client_profiles: Dict[str, ClientProfile] = {}
         self.merchant_profiles: Dict[str, MerchantProfile] = {}
+        self.session_manager = get_session_manager()
     
     async def start_dialogue(
         self,
@@ -257,6 +268,7 @@ class DialogueManager:
             item_name=item_name,
             expected_price=expected_price
         )
+        self.session_manager.create_session(session_id=session_id, user_id=client_id)
         
         # 保存画像
         self.client_profiles[client_id] = client_profile
@@ -267,7 +279,8 @@ class DialogueManager:
         merchant_agent = MerchantAgent(merchant_profile, self.llm_client)
         
         # 生成开场白
-        opening_message = await client_agent.generate_opening_message(item_name, expected_price)
+        priority_ctx = self.session_manager.build_priority_context(client_id)
+        opening_message = await client_agent.generate_opening_message(item_name, expected_price, priority_context=priority_ctx)
         
         # 添加到会话
         session.turns.append(DialogueTurn(
@@ -277,13 +290,15 @@ class DialogueManager:
             text=opening_message,
             timestamp=time.time()
         ))
+        self.session_manager.append_turn(session_id, "client", opening_message)
         
         # 商家生成初始报价
         base_price = expected_price * 1.2  # 假设基础价格比预期高20%
         merchant_offer = await merchant_agent.generate_initial_offer(
             item_name,
             base_price,
-            client_profile
+            client_profile,
+            priority_context=priority_ctx,
         )
         
         session.turns.append(DialogueTurn(
@@ -294,6 +309,7 @@ class DialogueManager:
             timestamp=time.time(),
             metadata={"offer_price": merchant_offer["offer_price"]}
         ))
+        self.session_manager.append_turn(session_id, "merchant", merchant_offer["message"])
         
         self.sessions[session_id] = session
         return session
@@ -322,7 +338,8 @@ class DialogueManager:
                 counter_offer = await client_agent.generate_counter_offer(
                     last_turn.text,
                     session.item_name,
-                    session.expected_price
+                    session.expected_price,
+                    priority_context=self.session_manager.build_priority_context(session.client_id),
                 )
                 
                 session.turns.append(DialogueTurn(
@@ -332,6 +349,7 @@ class DialogueManager:
                     text=counter_offer,
                     timestamp=time.time()
                 ))
+                self.session_manager.append_turn(session_id, "client", counter_offer)
                 
                 # 评估是否接受
                 merchant_offer_price = last_turn.metadata.get("offer_price", session.expected_price)
@@ -343,6 +361,7 @@ class DialogueManager:
                         "price": merchant_offer_price,
                         "satisfaction": evaluation["satisfaction"]
                     }
+                    await self.session_manager.recycle_session(session_id)
                     break
             
             else:
@@ -356,7 +375,8 @@ class DialogueManager:
                     merchant_response = await merchant_agent.respond_to_counter_offer(
                         last_turn.text,
                         last_merchant_turn.metadata.get("offer_price", session.expected_price),
-                        session.expected_price * 0.8
+                        session.expected_price * 0.8,
+                        priority_context=self.session_manager.build_priority_context(session.client_id),
                     )
                     
                     session.turns.append(DialogueTurn(
@@ -367,14 +387,25 @@ class DialogueManager:
                         timestamp=time.time(),
                         metadata={"offer_price": merchant_response["new_offer"]}
                     ))
+                    self.session_manager.append_turn(session_id, "merchant", merchant_response["message"])
             
             turn_id += 1
         
         if turn_id >= max_turns:
             session.status = "failed"
+            await self.session_manager.recycle_session(session_id)
         
         return session
     
+    async def close_session(self, session_id: str) -> bool:
+        session = self.sessions.get(session_id)
+        if not session:
+            return False
+        if session.status == "active":
+            session.status = "completed"
+        await self.session_manager.recycle_session(session_id)
+        return True
+
     def get_session(self, session_id: str) -> Optional[DialogueSession]:
         """获取对话会话"""
         return self.sessions.get(session_id)

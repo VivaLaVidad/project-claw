@@ -289,6 +289,7 @@ async def websocket_dialogue(
                     break
             
             elif message.get("type") == "close":
+                await manager.close_session(session_id)
                 break
     
     except Exception as e:
