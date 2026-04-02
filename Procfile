@@ -1,1 +1,1 @@
-web: uvicorn cloud_server.signaling_hub:app --host 0.0.0.0 --port $PORT --workers 1 --log-level info
+web: gunicorn cloud_server.api_server_pro:app -k uvicorn.workers.UvicornWorker --workers ${WORKERS:-2} --bind 0.0.0.0:${PORT:-8765} --timeout 120 --access-logfile - --error-logfile -
