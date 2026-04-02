@@ -26,6 +26,7 @@ Page({
   },
 
   onInputUrl(e) { this.setData({ customBaseUrl: e.detail.value }); },
+  useTencent() { this.setData({ baseUrl: setBaseUrl(BASE_URL_PRESETS.tencent || BASE_URL_PRESETS.production) }); wx.showToast({ title: '已切腾讯云', icon: 'success' }); },
   useRailway() { this.setData({ baseUrl: setBaseUrl(BASE_URL_PRESETS.railway) }); wx.showToast({ title: '已切 Railway', icon: 'success' }); },
   useZeabur() { this.setData({ baseUrl: setBaseUrl(BASE_URL_PRESETS.zeabur) }); wx.showToast({ title: '已切 Zeabur', icon: 'success' }); },
   useLocal() { this.setData({ baseUrl: setBaseUrl(BASE_URL_PRESETS.local) }); wx.showToast({ title: '已切本地', icon: 'success' }); },

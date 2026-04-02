@@ -5,15 +5,17 @@
 
 const CONFIG = {
   development: 'http://127.0.0.1:8765',
+  tencentCloud: 'https://api.project-claw.com',
   railway: 'https://project-claw-production.up.railway.app',
-  production: 'https://project-claw-production.up.railway.app',
+  production: 'https://api.project-claw.com',
 };
 
 const BASE_URL_PRESETS = {
-  local: CONFIG.development,
-  railway: CONFIG.railway,
-  zeabur: CONFIG.production,
+  tencent: CONFIG.tencentCloud,
   production: CONFIG.production,
+  railway: CONFIG.railway,
+  zeabur: CONFIG.railway,
+  local: CONFIG.development,
 };
 
 const BASE_URL_KEY = 'claw_base_url_override';
@@ -36,7 +38,7 @@ function _getEnvVersion() {
 
 function _resolveDefaultBaseUrl() {
   const envVersion = _getEnvVersion();
-  if (envVersion === 'develop') return CONFIG.development;
+  if (envVersion === 'develop') return CONFIG.tencentCloud;
   if (envVersion === 'trial') return CONFIG.production;
   return CONFIG.production;
 }

@@ -7,6 +7,7 @@
 
   <view class="card">
     <view class="title">环境切换</view>
+    <button class="btn" bindtap="useTencent">使用腾讯云（推荐）</button>
     <button class="btn" bindtap="useRailway">使用 Railway</button>
     <button class="btn" bindtap="useZeabur">使用 Zeabur</button>
     <button class="btn" bindtap="useLocal">使用本地</button>
