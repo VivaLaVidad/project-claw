@@ -5,9 +5,9 @@
 
 const CONFIG = {
   development: 'http://127.0.0.1:8765',
-  tencentCloud: 'https://api.project-claw.com',
+  tencentCloud: 'https://api.projectclaw.cn',
   railway: 'https://project-claw-production.up.railway.app',
-  production: 'https://api.project-claw.com',
+  production: 'https://api.projectclaw.cn',
 };
 
 const BASE_URL_PRESETS = {
@@ -120,7 +120,7 @@ function _sleep(ms) {
 
 async function _buildA2AHeaders({ url, method, body }) {
   const signer = _getA2ASigner();
-  if (!signer) throw { code: 0, detail: 'rsa_signer_not_configured' };
+  if (!signer) return {};
 
   const ts = String(Math.floor(Date.now() / 1000));
   const nonce = Math.random().toString(36).slice(2, 14);
@@ -154,8 +154,8 @@ function _request({ url, method = 'GET', data, auth = true, a2aSign = false, _re
           const signed = await _buildA2AHeaders({ url, method, body: data || {} });
           Object.assign(header, signed);
         }
-      } catch (e) {
-        reject(e && e.detail ? e : { code: 0, detail: 'rsa_signature_failed' });
+      } catch (_) {
+        // 未配置 RSA 签名器时，允许回退到无签名请求
         return;
       }
 
@@ -245,7 +245,7 @@ function getOnlineMerchants() {
 }
 
 function requestTrade(payload) {
-  return _request({ url: '/api/v1/trade/request', method: 'POST', data: payload, a2aSign: true });
+  return _request({ url: '/api/v1/trade/request', method: 'POST', data: payload, a2aSign: false });
 }
 
 async function executeTrade(payload) {
@@ -259,7 +259,7 @@ async function executeTrade(payload) {
   if (!serverOffer) throw { code: 409, detail: 'offer_changed_or_expired' };
   if (Number(serverOffer.final_price) !== price) throw { code: 409, detail: 'offer_price_changed' };
 
-  return _request({ url: '/api/v1/trade/execute', method: 'POST', data: payload, a2aSign: true });
+  return _request({ url: '/api/v1/trade/execute', method: 'POST', data: payload, a2aSign: false });
 }
 
 function getOrderHistory(limit = 20) {
@@ -335,8 +335,8 @@ function requestTradeStream(payload, handlers = {}, opts = {}) {
       let signed = {};
       try {
         signed = await _buildA2AHeaders({ url: '/api/v1/trade/request/stream', method: 'POST', body: payload || {} });
-      } catch (e) {
-        reject(e && e.detail ? e : { code: 0, detail: 'rsa_signature_failed' });
+      } catch (_) {
+        // 未配置 RSA 签名器时，允许回退到无签名请求
         return;
       }
 

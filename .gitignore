@@ -34,3 +34,6 @@ append_content.txt
 lobster_mvp_append.txt
 merge.py
 fix.py
+
+# 本地运营私密配置（不提交）
+.operator.private.json
