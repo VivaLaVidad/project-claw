@@ -1,0 +1,24 @@
+<view wx:if="{{visible}}" class="nb-mask">
+  <view class="nb-rain-wrap">
+    <view wx:for="{{rainRows}}" wx:key="*this" class="nb-rain-line" style="animation-delay: {{index * 0.08}}s;">{{item}}</view>
+  </view>
+
+  <view class="nb-panel">
+    <view class="nb-head">NEGOTIATION BATTLEFIELD · A2A</view>
+    <view class="nb-sides">
+      <view class="nb-side left">🔵 我的 Agent</view>
+      <view class="nb-vs">⇄</view>
+      <view class="nb-side right">🟠 全城商家集群</view>
+    </view>
+
+    <scroll-view class="nb-log" scroll-y="true" enhanced="true" show-scrollbar="false" scroll-into-view="{{'line-' + (logs.length - 1)}}">
+      <view wx:for="{{logs}}" wx:key="idx" wx:for-index="idx" id="{{'line-' + idx}}" class="nb-line {{item.side}}">
+        <text>{{item.text}}</text>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view wx:if="{{matched}}" class="nb-matched-flash">
+    <view class="nb-matched-text">MATCHED</view>
+  </view>
+</view>

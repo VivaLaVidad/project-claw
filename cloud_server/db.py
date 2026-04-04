@@ -7,7 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 try:
     from cloud_server.data_models import Base
-except ModuleNotFoundError:
+except ModuleNotFoundError as e:
+    if e.name != "cloud_server":
+        raise
     from data_models import Base
 
 

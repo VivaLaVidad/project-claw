@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>A2A 2D 可视化沙盒监控</title>
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #060b16;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: #dbeafe;
+    }
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+    .badge {
+      position: fixed;
+      top: 14px;
+      left: 16px;
+      font-size: 12px;
+      letter-spacing: .08em;
+      color: #7dd3fc;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(125, 211, 252, 0.35);
+      border-radius: 999px;
+      padding: 6px 10px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="badge">A2A SANDBOX MONITOR</div>
+  <canvas id="stage"></canvas>
+
+  <script>
+    const canvas = document.getElementById('stage');
+    const ctx = canvas.getContext('2d');
+
+    const merchants = [
+      { name: '李记', x: 0, y: 0, size: 120, pulse: 0 },
+      { name: '王记', x: 0, y: 0, size: 120, pulse: 0 },
+      { name: '张记', x: 0, y: 0, size: 120, pulse: 0 }
+    ];
+
+    const consumers = [];
+    const sparks = [];
+    let lastSpawn = 0;
+
+    function resize() {
+      canvas.width = window.innerWidth * devicePixelRatio;
+      canvas.height = window.innerHeight * devicePixelRatio;
+      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const y = h * 0.5;
+      merchants[0].x = w * 0.28; merchants[0].y = y;
+      merchants[1].x = w * 0.50; merchants[1].y = y;
+      merchants[2].x = w * 0.72; merchants[2].y = y;
+    }
+
+    function rand(min, max) { return Math.random() * (max - min) + min; }
+    function pick(arr) { return arr[(Math.random() * arr.length) | 0]; }
+
+    function spawnConsumer(now) {
+      const side = (Math.random() * 4) | 0;
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      let x = 0, y = 0;
+
+      if (side === 0) { x = rand(-40, -10); y = rand(20, h - 20); }
+      if (side === 1) { x = rand(w + 10, w + 40); y = rand(20, h - 20); }
+      if (side === 2) { x = rand(20, w - 20); y = rand(-40, -10); }
+      if (side === 3) { x = rand(20, w - 20); y = rand(h + 10, h + 40); }
+
+      const targetIndex = (Math.random() * merchants.length) | 0;
+      consumers.push({
+        x, y,
+        r: rand(6, 9),
+        vx: 0,
+        vy: 0,
+        speed: rand(1.1, 1.9),
+        glow: rand(0.6, 1),
+        stage: 'flying', // flying | bargaining | settled
+        targetIndex,
+        tried: new Set([targetIndex]),
+        arrivedAt: 0,
+        dealValue: rand(80, 99),
+        visibleBubble: true,
+        nextBlinkAt: now + 180,
+      });
+      lastSpawn = now;
+    }
+
+    function createBurst(x1, y1, x2, y2, success) {
+      const mx = (x1 + x2) * 0.5;
+      const my = (y1 + y2) * 0.5;
+      const color = success ? 'rgba(34,197,94,' : 'rgba(251,113,133,';
+      const count = success ? 60 : 26;
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const v = rand(0.8, success ? 4.2 : 2.2);
+        sparks.push({
+          x: mx,
+          y: my,
+          vx: Math.cos(a) * v,
+          vy: Math.sin(a) * v,
+          life: rand(success ? 28 : 16, success ? 54 : 30),
+          age: 0,
+          color,
+          size: rand(1, success ? 3.2 : 2.2)
+        });
+      }
+    }
+
+    function nextMerchantIndex(c) {
+      for (let i = 0; i < merchants.length; i++) {
+        if (!c.tried.has(i)) return i;
+      }
+      return -1;
+    }
+
+    function updateConsumers(now) {
+      for (let i = consumers.length - 1; i >= 0; i--) {
+        const c = consumers[i];
+        const target = merchants[c.targetIndex];
+        const tx = target.x;
+        const ty = target.y;
+
+        if (c.stage === 'flying') {
+          const dx = tx - c.x;
+          const dy = ty - c.y;
+          const d = Math.hypot(dx, dy) || 1;
+          c.vx = (dx / d) * c.speed;
+          c.vy = (dy / d) * c.speed;
+          c.x += c.vx;
+          c.y += c.vy;
+
+          if (d < target.size * 0.42) {
+            c.stage = 'bargaining';
+            c.arrivedAt = now;
+            target.pulse = 1;
+          }
+        } else if (c.stage === 'bargaining') {
+          if (now >= c.nextBlinkAt) {
+            c.visibleBubble = !c.visibleBubble;
+            c.dealValue += (Math.random() > 0.5 ? 1 : -1) * ((Math.random() * 3) | 0);
+            c.dealValue = Math.max(76, Math.min(102, c.dealValue));
+            c.nextBlinkAt = now + rand(120, 220);
+          }
+
+          if (now - c.arrivedAt > 3000) {
+            const ok = Math.random() < 0.62;
+            if (ok) {
+              createBurst(c.x, c.y, target.x, target.y, true);
+              consumers.splice(i, 1);
+            } else {
+              createBurst(c.x, c.y, target.x, target.y, false);
+              const next = nextMerchantIndex(c);
+              if (next === -1) {
+                consumers.splice(i, 1);
+              } else {
+                c.targetIndex = next;
+                c.tried.add(next);
+                c.stage = 'flying';
+              }
+            }
+          }
+        }
+      }
+    }
+
+    function updateSparks() {
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        const p = sparks[i];
+        p.age++;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vx *= 0.985;
+        p.vy *= 0.985;
+        if (p.age > p.life) sparks.splice(i, 1);
+      }
+    }
+
+    function drawGrid() {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      ctx.fillStyle = '#060b16';
+      ctx.fillRect(0, 0, w, h);
+
+      const step = 34;
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= w; x += step) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= h; y += step) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+      }
+    }
+
+    function drawMerchant(m) {
+      const s = m.size;
+      const x = m.x - s / 2;
+      const y = m.y - s / 2;
+      m.pulse *= 0.93;
+
+      ctx.save();
+      ctx.shadowBlur = 24 + m.pulse * 26;
+      ctx.shadowColor = 'rgba(59,130,246,0.45)';
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+      ctx.strokeStyle = 'rgba(125,211,252,0.65)';
+      ctx.lineWidth = 2;
+      ctx.fillRect(x, y, s, s);
+      ctx.strokeRect(x, y, s, s);
+
+      ctx.fillStyle = '#e2e8f0';
+      ctx.font = '700 20px "Segoe UI", "PingFang SC", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(m.name, m.x, m.y + 7);
+      ctx.restore();
+    }
+
+    function drawBubble(x, y, text, color) {
+      const padX = 8;
+      const h = 22;
+      ctx.font = '12px "Consolas", monospace';
+      const w = ctx.measureText(text).width + padX * 2;
+      const rx = x - w / 2;
+      const ry = y - h - 10;
+
+      ctx.fillStyle = 'rgba(15,23,42,0.86)';
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(rx, ry, w, h, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = color;
+      ctx.textAlign = 'center';
+      ctx.fillText(text, x, ry + 15);
+    }
+
+    function drawConsumers() {
+      for (const c of consumers) {
+        ctx.save();
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = `rgba(56,189,248,${c.glow})`;
+        ctx.fillStyle = 'rgba(56,189,248,0.95)';
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        if (c.stage === 'bargaining' && c.visibleBubble) {
+          const m = merchants[c.targetIndex];
+          drawBubble(c.x, c.y - c.r, `买方: ${c.dealValue}`, '#38bdf8');
+          drawBubble(m.x, m.y - m.size * 0.55, `卖方: ${c.dealValue + ((Math.random() * 4) | 0)}`, '#c4b5fd');
+        }
+      }
+    }
+
+    function drawSparks() {
+      for (const p of sparks) {
+        const alpha = 1 - p.age / p.life;
+        ctx.fillStyle = `${p.color}${alpha.toFixed(3)})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function loop(ts) {
+      if (!lastSpawn || ts - lastSpawn > 2000) spawnConsumer(ts);
+      updateConsumers(ts);
+      updateSparks();
+
+      drawGrid();
+      merchants.forEach(drawMerchant);
+      drawConsumers();
+      drawSparks();
+
+      requestAnimationFrame(loop);
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>

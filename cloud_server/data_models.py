@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import enum
 import time
@@ -27,6 +27,9 @@ class ClientORM(Base):
     client_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     wechat_openid: Mapped[str] = mapped_column(String(128), default="", nullable=False)
     persona_vector: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    buyer_system_prompt: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    taste_preference: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    negotiation_style: Mapped[str] = mapped_column(String(64), default="", nullable=False)
     risk_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     created_at: Mapped[float] = mapped_column(Float, default=time.time, nullable=False)
     updated_at: Mapped[float] = mapped_column(Float, default=time.time, nullable=False)
@@ -39,6 +42,9 @@ class MerchantORM(Base):
     promoter_id: Mapped[str] = mapped_column(String(64), default="", nullable=False)
     routing_token_balance: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     box_status: Mapped[str] = mapped_column(String(32), default="online", nullable=False)
+    persona_profile: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    sales_system_prompt: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    bottom_line_rules: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     created_at: Mapped[float] = mapped_column(Float, default=time.time, nullable=False)
     updated_at: Mapped[float] = mapped_column(Float, default=time.time, nullable=False)
 

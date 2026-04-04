@@ -1,0 +1,53 @@
+<view class="page nego-page">
+  <view class="hero card">
+    <text class="hero-title">实时谈判中</text>
+    <text class="hero-sub">{{buyerMeta}}</text>
+    <text class="hero-status">{{buyerStatus}}</text>
+  </view>
+
+  <view class="section card">
+    <view class="section-head">
+      <text class="section-title">谈判过程</text>
+      <text class="section-tip">按时间顺序展示</text>
+    </view>
+
+    <view class="filter-row">
+      <view class="filter-list">
+        <text wx:for="{{dialogueFilters}}" wx:key="key" class="filter-chip {{dialogueFilter === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="onChangeDialogueFilter">{{item.name}}</text>
+      </view>
+      <text class="export-link" bindtap="exportDialogue">导出记录</text>
+    </view>
+
+    <scroll-view class="timeline" scroll-y="true" scroll-into-view="{{scrollTo}}" enhanced="true" show-scrollbar="false">
+      <view wx:for="{{displayLines}}" wx:key="id" id="{{item.id}}" class="timeline-item {{item.type}}">
+        <view class="timeline-tag">{{item.tag}}</view>
+        <text class="timeline-text">{{item.text}}</text>
+      </view>
+    </scroll-view>
+
+    <view class="effect-tip effect-good" wx:if="{{effectMode === 'green'}}">已出现更优报价，正在继续压价...</view>
+    <view class="effect-tip effect-bad" wx:if="{{effectMode === 'red'}}">检测到偏高报价，系统正在重新博弈...</view>
+  </view>
+
+  <view class="section card">
+    <view class="section-head">
+      <text class="section-title">当前报价动态</text>
+      <text class="section-tip">实时更新</text>
+    </view>
+
+    <view wx:if="{{bidItems && bidItems.length}}" class="bid-list">
+      <view wx:for="{{bidItems}}" wx:key="merchant_id" class="bid-item">
+        <text class="bid-merchant">{{item.merchant_id}}</text>
+        <text class="bid-price">¥{{item.final_price}}</text>
+      </view>
+    </view>
+    <view wx:else class="empty">商家正在返回报价，请稍候…</view>
+  </view>
+
+  <view class="seal-wrap" wx:if="{{sealed}}">
+    <view class="seal-card">
+      <text class="seal-title">报价整理完成</text>
+      <text class="seal-sub">正在进入报价选择页…</text>
+    </view>
+  </view>
+</view>

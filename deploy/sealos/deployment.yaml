@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: project-claw-hub
+  namespace: project-claw
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: project-claw-hub
+  template:
+    metadata:
+      labels:
+        app: project-claw-hub
+    spec:
+      containers:
+      - name: hub
+        image: registry.cn-hangzhou.aliyuncs.com/project-claw/hub:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8765
+        env:
+        - name: CLAW_ENV
+          value: sealos
+        - name: PORT
+          value: "8765"
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: claw-secrets
+              key: redis-url
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: claw-secrets
+              key: database-url
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8765
+          initialDelaySeconds: 8
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8765
+          initialDelaySeconds: 15
+          periodSeconds: 10

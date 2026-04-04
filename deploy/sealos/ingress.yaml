@@ -1,0 +1,18 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: project-claw-hub
+  namespace: project-claw
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: api.projectclaw.cn
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: project-claw-hub
+            port:
+              number: 80

@@ -2,38 +2,39 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 安装系统依赖
-RUN apt-get update && apt-get install -y \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_DEFAULT_TIMEOUT=120 \
+    PIP_RETRIES=10 \
+    PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 
-# 复制依赖文件
-COPY requirements.txt .
+# 安装系统依赖（国内镜像源 + 重试）
+RUN set -eux; \
+    sed -i 's/deb.debian.org/mirrors.tencent.com/g' /etc/apt/sources.list.d/debian.sources; \
+    sed -i 's/security.debian.org/mirrors.tencent.com/g' /etc/apt/sources.list.d/debian.sources; \
+    for i in 1 2 3; do apt-get update && break || sleep 5; done; \
+    apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+      libsm6 \
+      libxext6 \
+      libxrender-dev \
+      libgomp1; \
+    rm -rf /var/lib/apt/lists/*
 
-# 安装 Python 依赖
-RUN pip install --no-cache-dir -r requirements.txt
+# 先复制依赖文件，提升缓存命中率
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # 复制项目文件
-COPY . .
+COPY . /app
+RUN chmod +x /app/start.sh
 
-# 创建日志目录
-RUN mkdir -p /app/logs
+EXPOSE 8765
 
-# 设置环境变量
-ENV PYTHONUNBUFFERED=1
-ENV DEEPSEEK_API_KEY=""
-ENV REDIS_URL=""
-ENV LEDGER_ENABLED="0"
-ENV CLEARING_ENABLED="0"
-ENV SOCIAL_ENABLED="0"
-ENV HUB_JWT_SECRET="claw-change-in-prod"
-ENV HUB_MERCHANT_KEY="merchant-shared-key"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8765/health || exit 1
 
-# 暴露端口（Railway 会注入 PORT，默认 8080）
-EXPOSE 8080
-
-# 启动命令（必须使用动态 PORT，避免 healthcheck 失败）
-CMD ["sh", "-c", "uvicorn cloud_server.signaling_hub:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --log-level info"]
+CMD ["/app/start.sh"]

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent 异常接管中心</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            panel: '#f8fafc',
+            border: '#e2e8f0',
+            ink: '#0f172a',
+            muted: '#64748b',
+            brand: '#2563eb',
+            success: '#16a34a'
+          },
+          boxShadow: {
+            card: '0 10px 30px rgba(15, 23, 42, 0.08)',
+            soft: '0 8px 20px rgba(37, 99, 235, 0.15)'
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    .nav-rail-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: #334155;
+      background: #eef2ff;
+      border: 1px solid #dbeafe;
+    }
+  </style>
+</head>
+<body class="bg-panel text-ink antialiased min-h-screen">
+  <div class="flex min-h-screen">
+    <!-- 细长左侧导航栏 -->
+    <aside class="w-20 border-r border-border bg-white flex flex-col items-center py-5 gap-3">
+      <div class="w-10 h-10 rounded-xl bg-brand text-white flex items-center justify-center font-bold shadow-soft">C</div>
+      <div class="nav-rail-icon">🏠</div>
+      <div class="nav-rail-icon">🤖</div>
+      <div class="nav-rail-icon">📊</div>
+      <div class="nav-rail-icon">⚙️</div>
+      <div class="mt-auto nav-rail-icon">👤</div>
+    </aside>
+
+    <main class="flex-1 p-8 lg:p-12">
+      <div class="max-w-4xl mx-auto">
+        <header class="mb-6">
+          <h1 class="text-3xl font-semibold tracking-tight">Agent 异常接管中心</h1>
+          <p class="text-muted mt-2">面向高风险任务的人机协同决策面板</p>
+        </header>
+
+        <section class="bg-white border border-border rounded-2xl shadow-card p-6 lg:p-8">
+          <div class="inline-flex items-center gap-2 rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1 text-sm font-medium">
+            <span>⚠️</span>
+            <span>异常挂起任务</span>
+          </div>
+
+          <p class="mt-5 text-lg leading-relaxed">
+            编号 <span class="font-semibold text-brand">#042</span> 龙虾盒子（王记餐厅）遇到大额询价：顾客要求 50 份快餐 8 折。Agent 无权决断。
+          </p>
+
+          <div class="mt-8 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <button data-action="授权 8 折" class="action-btn rounded-xl px-4 py-3 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white transition-colors">授权 8 折</button>
+            <button data-action="驳回并出价 9 折" class="action-btn rounded-xl px-4 py-3 text-sm font-medium bg-brand hover:bg-blue-700 text-white transition-colors">驳回并出价 9 折</button>
+            <button data-action="唤醒物理设备人工接管" class="action-btn rounded-xl px-4 py-3 text-sm font-medium border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 transition-colors">唤醒物理设备人工接管</button>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- 右下角 Toast -->
+  <div id="toast" class="fixed right-6 bottom-6 translate-y-4 opacity-0 pointer-events-none transition-all duration-300">
+    <div class="bg-success text-white px-5 py-3 rounded-xl shadow-xl text-sm font-medium">
+      信令已下发至边缘设备
+    </div>
+  </div>
+
+  <script>
+    const toast = document.getElementById('toast');
+    let toastTimer = null;
+
+    function showToast() {
+      toast.classList.remove('translate-y-4', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.add('translate-y-4', 'opacity-0');
+        toast.classList.remove('translate-y-0', 'opacity-100');
+      }, 1800);
+    }
+
+    document.querySelectorAll('.action-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        showToast();
+      });
+    });
+  </script>
+</body>
+</html>

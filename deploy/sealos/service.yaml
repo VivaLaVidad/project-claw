@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: project-claw-hub
+  namespace: project-claw
+spec:
+  selector:
+    app: project-claw-hub
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8765

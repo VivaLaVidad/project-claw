@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import json
@@ -14,9 +14,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from jose import JWTError, jwt
 
+from cloud_server.persona_builder_routes import router as persona_builder_router
+from cloud_server.a2a_arena_routes import router as a2a_arena_router
+
 try:
     from cloud_server.db import init_db_schema
-except ModuleNotFoundError:
+except ModuleNotFoundError as e:
+    if e.name != "cloud_server":
+        raise
     from db import init_db_schema
 
 APP_NAME = "Project Claw C-API"
@@ -33,6 +38,8 @@ MAX_DEMAND_TEXT_LEN = int(os.getenv("MAX_DEMAND_TEXT_LEN", "500"))
 
 app = FastAPI(title=APP_NAME, version="2.2.1")
 app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
+app.include_router(persona_builder_router)
+app.include_router(a2a_arena_router)
 
 if ENV_NAME == "prod" and JWT_SECRET == "claw-change-in-prod":
     raise RuntimeError("HUB_JWT_SECRET must be set in production")
@@ -341,4 +348,9 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8765")), reload=False)
+
+
+
+
+
 

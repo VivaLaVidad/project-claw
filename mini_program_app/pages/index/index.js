@@ -1,8 +1,73 @@
-/**
+﻿/**
  * Project Claw v14.3 - pages/index/index.js
  * 首页：询价表单 + 位置获取 + 健康检测
  */
 const { ensureToken, healthCheck, getOnlineMerchants, requestTrade, getBaseUrl } = require('../../utils/api');
+
+function tryParseJsonText(value) {
+  if (typeof value !== 'string') return value;
+  const text = value.trim();
+  if (!text) return value;
+  if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+    try {
+      return JSON.parse(text);
+    } catch (_) {
+      return value;
+    }
+  }
+  return value;
+}
+
+function extractMerchantCount(value, depth = 0) {
+  if (depth > 4 || value == null) return 0;
+
+  const parsed = tryParseJsonText(value);
+
+  if (typeof parsed === 'number') {
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }
+
+  if (Array.isArray(parsed)) {
+    return parsed.length;
+  }
+
+  if (typeof parsed !== 'object') return 0;
+
+  const directCount = Number(
+    parsed.online_merchants ??
+    parsed.merchants ??
+    parsed.onlineMerchantsCount ??
+    parsed.count ??
+    parsed.total
+  );
+  if (Number.isFinite(directCount) && directCount > 0) return directCount;
+
+  if (Array.isArray(parsed.items)) return parsed.items.length;
+  if (Array.isArray(parsed.onlineMerchants)) return parsed.onlineMerchants.length;
+  if (Array.isArray(parsed.merchants_list)) return parsed.merchants_list.length;
+
+  const nestedKeys = ['data', 'result', 'payload', 'body', 'response'];
+  for (const key of nestedKeys) {
+    if (parsed[key] != null) {
+      const nestedCount = extractMerchantCount(parsed[key], depth + 1);
+      if (nestedCount > 0) return nestedCount;
+    }
+  }
+
+  for (const key of Object.keys(parsed)) {
+    const nested = parsed[key];
+    if (nested && typeof nested === 'object') {
+      const nestedCount = extractMerchantCount(nested, depth + 1);
+      if (nestedCount > 0) return nestedCount;
+    }
+  }
+
+  return 0;
+}
+
+function resolveMerchantCount(res) {
+  return extractMerchantCount(res, 0);
+}
 
 const DEFAULT_ITEMS = [
   '招牌牛肉面', '麻辣烫', '猪脚饭', '黄焖鸡米饭',
@@ -73,33 +138,41 @@ Page({
   },
 
   onShow() {
-    // 页面可见时重新诊断，避免冷启动瞬时网络抖动误判
     this.setData({ envBaseUrl: getBaseUrl() });
     this._runDiagnostics();
   },
 
-  // ─── 诊断 ────────────────────────────────────────────────────────────────
   async _runDiagnostics() {
-    this.setData({ diagLoading: true });
+    this.setData({ diagLoading: true, envBaseUrl: getBaseUrl() });
     await Promise.allSettled([
       this._checkHealth(),
       this._refreshMerchants(),
     ]);
-    this.setData({ diagLoading: false });
+    this.setData({ diagLoading: false, envBaseUrl: getBaseUrl() });
   },
 
   async _checkHealth() {
     try {
       const res = await healthCheck();
-      this.setData({
-        healthStatus: `正常 · ${res.merchants || 0} 家商家在线`,
+      console.log('[Index] healthCheck raw =', res);
+      const count = resolveMerchantCount(res);
+      console.log('[Index] healthCheck count =', count);
+      const nextState = {
+        healthStatus: `正常 · ${count} 家商家在线`,
         healthOk: true,
-      });
+      };
+      const cache = getApp().getCacheManager && getApp().getCacheManager();
+      if (count > 0) {
+        nextState.onlineMerchants = count;
+        if (cache) cache.set('online_merchants_count', count, 15000);
+      }
+      this.setData(Object.assign(nextState, { envBaseUrl: getBaseUrl() }));
     } catch (e) {
       const detail = (e && (e.detail || e.errMsg || e.message)) || 'network_error';
       this.setData({
         healthStatus: `服务暂不可用（${detail}）`,
         healthOk: false,
+        envBaseUrl: getBaseUrl(),
       });
     }
   },
@@ -111,12 +184,13 @@ Page({
       this.setData({ onlineMerchants: cachedOnline });
     }
 
-    // 工业级：短重试，减少移动网络抖动造成的误判
     for (let i = 0; i < 3; i++) {
       try {
         const res = await getOnlineMerchants();
-        const count = (res && res.online_merchants) || 0;
-        this.setData({ onlineMerchants: count });
+        console.log('[Index] getOnlineMerchants raw =', res);
+        const count = resolveMerchantCount(res);
+        console.log('[Index] getOnlineMerchants count =', count);
+        this.setData({ onlineMerchants: count, envBaseUrl: getBaseUrl() });
         if (cache) cache.set('online_merchants_count', count, 15000);
         return;
       } catch (e) {
@@ -125,10 +199,12 @@ Page({
           console.warn('[Index] getOnlineMerchants failed:', detail, 'base=', getBaseUrl());
           try {
             const health = await healthCheck();
-            const fallbackCount = (health && health.merchants) || 0;
-            this.setData({ onlineMerchants: fallbackCount });
+            const fallbackCount = resolveMerchantCount(health);
+            console.log('[Index] fallback health raw =', health);
+            console.log('[Index] fallback health count =', fallbackCount);
+            this.setData({ onlineMerchants: fallbackCount, envBaseUrl: getBaseUrl() });
           } catch (_) {
-            this.setData({ onlineMerchants: 0 });
+            this.setData({ onlineMerchants: 0, envBaseUrl: getBaseUrl() });
           }
         }
       }
@@ -138,7 +214,6 @@ Page({
 
   onTapDiag() { this._runDiagnostics(); },
 
-  // ─── 位置 ────────────────────────────────────────────────────────────────
   getLocation() {
     wx.showLoading({ title: '获取位置中…' });
     wx.authorize({
@@ -170,7 +245,6 @@ Page({
     });
   },
 
-  // ─── 快捷选品 ────────────────────────────────────────────────────────────
   onTapQuick(e) {
     const item = e.currentTarget.dataset.item;
     this.setData({
@@ -179,16 +253,13 @@ Page({
     });
   },
 
-  // ─── 表单输入 ────────────────────────────────────────────────────────────
   onInput(e) {
     const key = e.currentTarget.dataset.key;
     let val = e.detail.value;
-    // 价格和数量只允许正数
     if (key === 'max_price' || key === 'quantity') {
       val = val.replace(/[^0-9.]/g, '');
     }
     this.setData({ [`form.${key}`]: val });
-    // 自动生成需求描述
     if (key === 'item_name' && val) {
       const price = this.data.form.max_price;
       this.setData({
@@ -201,12 +272,11 @@ Page({
     }
   },
 
-  // ─── 提交询价 ────────────────────────────────────────────────────────────
   _validate() {
     const f = this.data.form;
-    if (!f.item_name.trim())          return '请填写商品名称';
+    if (!f.item_name.trim()) return '请填写商品名称';
     if (!f.max_price || Number(f.max_price) <= 0) return '请填写有效预算';
-    if (Number(f.max_price) > 9999)   return '预算请填写合理金额';
+    if (Number(f.max_price) > 9999) return '预算请填写合理金额';
     return null;
   },
 
@@ -234,20 +304,20 @@ Page({
 
     const f = this.data.form;
     const payload = {
-      request_id:  `r-${Date.now()}`,
-      trace_id:    `trace-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      client_id:   clientId,
-      item_name:   f.item_name.trim(),
+      request_id: `r-${Date.now()}`,
+      trace_id: `trace-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      client_id: clientId,
+      item_name: f.item_name.trim(),
       demand_text: f.demand_text.trim() || `我要${f.item_name.trim()}`,
-      max_price:   Number(f.max_price),
-      quantity:    Math.max(1, Number(f.quantity || 1)),
+      max_price: Number(f.max_price),
+      quantity: Math.max(1, Number(f.quantity || 1)),
       timeout_sec: Math.min(30, Math.max(5, Number(f.timeout_sec || 20))),
     };
     if (this.data._geo) payload.location = this.data._geo;
 
     this.setData({ loading: true });
     wx.showLoading({ title: '正在询价…', mask: true });
-    
+
     try {
       const bundle = await requestTrade(payload);
       app.globalData.currentTrade = { request: payload, bundle };
@@ -258,7 +328,7 @@ Page({
       wx.hideLoading();
       wx.showModal({
         title: '询价失败',
-        content: String((e && e.detail) || '网络异常，请稍后重试'),
+        content: (e && (e.detail || e.errMsg || e.message)) || 'network_error',
         showCancel: false,
       });
     } finally {
@@ -268,41 +338,37 @@ Page({
 
   _saveLocalHistory(payload, bundle) {
     try {
-      const history = wx.getStorageSync('claw_history') || [];
-      history.unshift({
-        request_id: payload.request_id,
-        item_name:  payload.item_name,
-        max_price:  payload.max_price,
-        offer_count: (bundle.offers || []).length,
-        ts: Date.now(),
+      const list = wx.getStorageSync('claw_history') || [];
+      list.unshift({
+        id: payload.request_id,
+        item_name: payload.item_name,
+        max_price: payload.max_price,
+        created_at: Date.now(),
+        offers: (bundle && bundle.offers) || [],
       });
-      wx.setStorageSync('claw_history', history.slice(0, 50));
-    } catch {}
+      wx.setStorageSync('claw_history', list.slice(0, 30));
+    } catch (_) {}
   },
 
-  // ─── 高级选项折叠 ───────────────────────────────────────────────────────
   toggleAdvanced() {
     this.setData({ showAdvanced: !this.data.showAdvanced });
   },
 
-  // ─── 导航 ────────────────────────────────────────────────────────────────
   goHistory() { wx.navigateTo({ url: '/pages/history/history' }); },
-  goPrivacy()  { wx.navigateTo({ url: '/pages/privacy/privacy' }); },
+  goPrivacy() { wx.navigateTo({ url: '/pages/privacy/privacy' }); },
   goBDashboard() { wx.navigateTo({ url: '/pages/b-dashboard/b-dashboard' }); },
 
   copyDebugInfo() {
-    const app = getApp();
-    const debug = {
+    const debug = JSON.stringify({
       build: this.data.buildTag,
-      baseUrl: this.data.envBaseUrl,
+      base: this.data.envBaseUrl,
       health: this.data.healthStatus,
-      onlineMerchants: this.data.onlineMerchants,
-      clientId: app.globalData.clientId || wx.getStorageSync('claw_client_id') || '',
-      ts: Date.now(),
-    };
-    wx.setClipboardData({
-      data: JSON.stringify(debug),
-      success: () => wx.showToast({ title: '诊断信息已复制', icon: 'success' }),
-    });
-  }
+      online: this.data.onlineMerchants,
+      geo: this.data.geoStr,
+    }, null, 2);
+    wx.setClipboardData({ data: debug, success: () => wx.showToast({ title: '诊断信息已复制', icon: 'success' }) });
+  },
 });
+
+
+

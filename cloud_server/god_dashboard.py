@@ -1,354 +1,214 @@
-"""
-god_dashboard.py - Project Claw 融资路演上帝视角大屏
-使用 Streamlit 展示实时交易数据、AI 谈判过程、物理拓扑
-"""
+﻿from __future__ import annotations
 
-import streamlit as st
-import pandas as pd
-import pydeck as pdk
 import asyncio
 import json
-import time
-from datetime import datetime, timedelta
-from collections import deque
 import random
+import time
+from collections import deque
+from typing import Any, Deque, Dict, List
 
-# ═══════════════════════════════════════════════════════════════
-# 页面配置
-# ═══════════════════════════════════════════════════════════════
+import streamlit as st
 
-st.set_page_config(
-    page_title="Project Claw - 上帝视角",
-    page_icon="🦞",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+try:
+    from streamlit_lottie import st_lottie
+except Exception:  # noqa: BLE001
+    st_lottie = None
 
-# 暗黑模式主题
+try:
+    import websockets
+except Exception:  # noqa: BLE001
+    websockets = None
+
+st.set_page_config(page_title="Project Claw · A2A Arena", page_icon="⚔️", layout="wide", initial_sidebar_state="collapsed")
+
+SUCCESS_LOTTIE: Dict[str, Any] = {"v": "5.7.4", "fr": 30, "ip": 0, "op": 90, "w": 1200, "h": 700, "nm": "digital_coin_rain", "ddd": 0, "assets": [], "layers": []}
+for idx, x in enumerate(range(80, 1120, 120), start=1):
+    SUCCESS_LOTTIE["layers"].append({
+        "ddd": 0, "ind": idx, "ty": 4, "nm": f"coin_{idx}", "sr": 1,
+        "ks": {"o": {"a": 0, "k": 100}, "r": {"a": 0, "k": 0}, "p": {"a": 1, "k": [{"t": 0, "s": [x, -80, 0], "e": [x + (idx % 3) * 18, 760, 0]}, {"t": 90, "s": [x + (idx % 3) * 18, 760, 0]}]}, "a": {"a": 0, "k": [0, 0, 0]}, "s": {"a": 0, "k": [100, 100, 100]}},
+        "ao": 0,
+        "shapes": [{"ty": "gr", "it": [{"ty": "el", "p": {"a": 0, "k": [0, 0]}, "s": {"a": 0, "k": [34, 34]}, "nm": "ellipse"}, {"ty": "fl", "c": {"a": 0, "k": [0.98, 0.78, 0.12, 1]}, "o": {"a": 0, "k": 100}, "nm": "fill"}, {"ty": "st", "c": {"a": 0, "k": [1, 0.95, 0.45, 1]}, "o": {"a": 0, "k": 100}, "w": {"a": 0, "k": 2}, "nm": "stroke"}, {"ty": "tr", "p": {"a": 0, "k": [0, 0]}, "a": {"a": 0, "k": [0, 0]}, "s": {"a": 0, "k": [100, 100]}, "r": {"a": 0, "k": 0}, "o": {"a": 0, "k": 100}}], "nm": "coin_group"}],
+        "ip": 0, "op": 90, "st": 0, "bm": 0,
+    })
+
+BUYER_THOUGHTS = ["分析对方底牌中... 尝试施压。", "识别利润空间，准备继续压价。", "对方让步速度偏慢，切换柔性谈判。", "模拟竞对报价，制造稀缺感。", "预算边界仍安全，继续试探。"]
+SELLER_THOUGHTS = ["查阅底价为 12 元... 利润足够，抛出诱饵。", "买方压价强势，先守住最低毛利。", "库存健康，可适度让利换成交。", "检测用户成交意愿上升，准备收口。", "保持掌柜风度，但绝不击穿底线。"]
+JUDGE_LINES = ["裁判正在评估双方价格差。", "检测情绪强度与收敛趋势。", "当前谈判仍具继续价值。", "差价已收敛，接近成交阈值。"]
+
+
+def generate_mock_a2a_events() -> List[Dict[str, Any]]:
+    buyer_prices = [14.0, 14.4, 14.8, 15.0]
+    seller_prices = [18.0, 16.6, 15.6, 15.0]
+    events: List[Dict[str, Any]] = []
+    for idx in range(4):
+        events.append({"node": "BuyerNode", "thought": BUYER_THOUGHTS[idx % len(BUYER_THOUGHTS)], "action": f"counter_offer:{buyer_prices[idx]:.2f}", "message": f"买手出价提升至 ¥{buyer_prices[idx]:.2f}", "price": buyer_prices[idx], "status": "active", "round": idx + 1})
+        events.append({"node": "SellerNode", "thought": SELLER_THOUGHTS[idx % len(SELLER_THOUGHTS)], "action": f"counter_offer:{seller_prices[idx]:.2f}", "message": f"掌柜回击报价 ¥{seller_prices[idx]:.2f}", "price": seller_prices[idx], "status": "active", "round": idx + 1})
+        judge_status = "SUCCESS" if idx == 3 else "CONTINUE"
+        events.append({"node": "JudgeNode", "thought": JUDGE_LINES[idx % len(JUDGE_LINES)], "action": f"decision:{judge_status}", "message": "交易达成！已绕过大厂抽成！" if judge_status == "SUCCESS" else "裁判判定继续谈判。", "price": seller_prices[idx], "status": judge_status, "round": idx + 1})
+    return events
+
+
+async def _pull_ws_events(url: str, timeout_sec: float = 1.6) -> List[Dict[str, Any]]:
+    if not websockets or not url:
+        return []
+    events: List[Dict[str, Any]] = []
+    try:
+        async with websockets.connect(url, open_timeout=1, close_timeout=1) as ws:
+            started = time.time()
+            while time.time() - started < timeout_sec and len(events) < 6:
+                try:
+                    raw = await asyncio.wait_for(ws.recv(), timeout=0.35)
+                except asyncio.TimeoutError:
+                    break
+                payload = json.loads(raw)
+                if isinstance(payload, dict):
+                    events.append(payload)
+    except Exception:
+        return []
+    return events
+
+
+class ArenaDashboardState:
+    def __init__(self) -> None:
+        self.left_log: Deque[str] = deque(maxlen=10)
+        self.right_log: Deque[str] = deque(maxlen=10)
+        self.judge_log: Deque[str] = deque(maxlen=6)
+        self.price: float = 15.00
+        self.countdown: int = 12
+        self.turn: int = 1
+        self.success: bool = False
+        self.feed: List[Dict[str, Any]] = generate_mock_a2a_events()
+        self.feed_index: int = 0
+        self.last_tick: float = 0.0
+
+    def push_event(self, event: Dict[str, Any]) -> None:
+        node = str(event.get("node", ""))
+        thought = str(event.get("thought", ""))
+        action = str(event.get("action", ""))
+        status = str(event.get("status", "")).upper()
+        price = event.get("price")
+        if price is not None:
+            self.price = float(price)
+        self.turn = int(event.get("round", self.turn))
+        if node == "BuyerNode":
+            self.left_log.appendleft(f"{thought} 〔{action}〕")
+        elif node == "SellerNode":
+            self.right_log.appendleft(f"{thought} 〔{action}〕")
+        elif node == "JudgeNode":
+            self.judge_log.appendleft(str(event.get("message", thought)))
+            if status == "SUCCESS":
+                self.success = True
+        self.countdown = max(1, self.countdown - 2)
+
+    def tick_mock(self) -> None:
+        now = time.time()
+        if now - self.last_tick < 0.9:
+            return
+        self.last_tick = now
+        if self.feed_index >= len(self.feed):
+            self.feed_index = 0
+            self.success = False
+            self.countdown = 12
+            self.left_log.clear()
+            self.right_log.clear()
+            self.judge_log.clear()
+        event = self.feed[self.feed_index]
+        self.feed_index += 1
+        self.push_event(event)
+
+
+if "arena_dashboard_state" not in st.session_state:
+    st.session_state.arena_dashboard_state = ArenaDashboardState()
+state: ArenaDashboardState = st.session_state.arena_dashboard_state
+
 st.markdown("""
-    <style>
-        :root {
-            --primary-color: #00ff41;
-            --secondary-color: #ff006e;
-            --background-color: #0a0e27;
-            --surface-color: #1a1f3a;
-        }
-        
-        body {
-            background-color: #0a0e27;
-            color: #ffffff;
-        }
-        
-        .metric-card {
-            background: linear-gradient(135deg, rgba(0, 255, 65, 0.1), rgba(255, 0, 110, 0.1));
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(0, 255, 65, 0.2);
-            border-radius: 12px;
-            padding: 20px;
-            text-align: center;
-        }
-        
-        .metric-value {
-            font-size: 48px;
-            font-weight: 700;
-            color: #00ff41;
-            text-shadow: 0 0 20px rgba(0, 255, 65, 0.5);
-        }
-        
-        .metric-label {
-            font-size: 14px;
-            color: #a0a0a0;
-            margin-top: 8px;
-        }
-        
-        .console-log {
-            background: #0f1428;
-            border: 1px solid rgba(0, 255, 65, 0.2);
-            border-radius: 8px;
-            padding: 16px;
-            font-family: 'SF Mono', Monaco, monospace;
-            font-size: 12px;
-            max-height: 600px;
-            overflow-y: auto;
-            color: #00ff41;
-        }
-        
-        .log-entry {
-            margin: 4px 0;
-            padding: 4px 0;
-            border-left: 2px solid #00ff41;
-            padding-left: 8px;
-        }
-        
-        .log-entry.buyer {
-            color: #00d4ff;
-            border-left-color: #00d4ff;
-        }
-        
-        .log-entry.seller {
-            color: #ff9500;
-            border-left-color: #ff9500;
-        }
-        
-        .log-entry.match {
-            color: #00ff41;
-            border-left-color: #00ff41;
-            font-weight: 700;
-        }
-    </style>
+<style>
+.stApp { background: radial-gradient(circle at top, rgba(0,212,255,0.12), transparent 35%), radial-gradient(circle at bottom right, rgba(255,136,0,0.16), transparent 28%), #0e1117; color: #e6edf3; }
+.main-title { text-align:center; font-size: 58px; font-weight: 900; letter-spacing: 0.18em; color:#d9f7ff; text-shadow: 0 0 24px rgba(0,212,255,.32); margin-bottom: .2rem; }
+.sub-title { text-align:center; color:#7f8ea3; letter-spacing:.26em; margin-bottom: 1.6rem; }
+.arena-card { background: linear-gradient(180deg, rgba(18,24,38,.96), rgba(12,16,26,.96)); border:1px solid rgba(90,110,140,.24); border-radius:22px; padding:18px 18px 14px 18px; min-height: 620px; box-shadow: 0 18px 50px rgba(0,0,0,.35); }
+.avatar { width:108px; height:108px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin: 8px auto 12px auto; font-size:48px; font-weight:800; }
+.avatar.buyer { color:#8be9ff; background: radial-gradient(circle, rgba(0,212,255,.24), rgba(0,212,255,.07)); box-shadow: 0 0 22px rgba(0,212,255,.65), inset 0 0 28px rgba(0,212,255,.2); border:1px solid rgba(0,212,255,.55); }
+.avatar.seller { color:#ffc27a; background: radial-gradient(circle, rgba(255,145,0,.24), rgba(255,145,0,.07)); box-shadow: 0 0 22px rgba(255,145,0,.55), inset 0 0 28px rgba(255,145,0,.2); border:1px solid rgba(255,145,0,.45); }
+.lane-title { text-align:center; font-size: 24px; font-weight: 800; margin-bottom: 10px; }
+.lane-title.buyer { color:#68e1fd; }
+.lane-title.seller { color:#ffae57; }
+.thought-box { background: rgba(8,12,20,.78); border-radius: 16px; padding: 12px 14px; margin-bottom: 10px; font-size: 15px; line-height: 1.55; border-left: 4px solid #4cc9f0; }
+.thought-box.seller { border-left-color: #ff9e45; }
+.arena-center { text-align:center; display:flex; flex-direction:column; justify-content:center; min-height:620px; }
+.judge-ring { width: 240px; height:240px; border-radius:50%; margin:0 auto 20px auto; border:1px solid rgba(145,130,255,.4); box-shadow: 0 0 42px rgba(120,96,255,.28), inset 0 0 38px rgba(120,96,255,.12); display:flex; align-items:center; justify-content:center; background: radial-gradient(circle, rgba(110,94,255,.14), rgba(12,16,26,.12)); }
+.price { font-size: 68px; font-weight: 900; color:#ffe082; text-shadow:0 0 22px rgba(255,224,130,.28); }
+.judge-title { color:#b7b0ff; font-size: 24px; font-weight: 800; letter-spacing: .16em; }
+.judge-feed { margin-top: 16px; text-align:left; background: rgba(10,14,22,.78); border: 1px solid rgba(110,96,255,.25); border-radius: 16px; padding: 12px 14px; }
+.judge-row { color:#c7cbff; font-size:14px; margin:7px 0; }
+.success-banner { position:fixed; inset: 0; display:flex; align-items:center; justify-content:center; pointer-events:none; z-index:999; }
+.success-text { padding: 28px 44px; border-radius: 24px; background: rgba(11,17,26,.78); border:1px solid rgba(255,214,94,.58); color:#ffe082; font-size: 42px; font-weight: 900; text-shadow: 0 0 26px rgba(255,214,94,.45); box-shadow: 0 0 80px rgba(255,214,94,.22); }
+.tiny-note { color:#75829a; font-size: 12px; text-align:center; margin-top:6px; }
+</style>
 """, unsafe_allow_html=True)
 
-# ═══════════════════════════════════════════════════════════════
-# 数据模拟
-# ═══════════════════════════════════════════════════════════════
+mode = st.sidebar.selectbox("数据源", ["Mock Demo", "Live WebSocket"], index=0)
+ws_url = st.sidebar.text_input("WebSocket URL", value="ws://127.0.0.1:8765/ws/a2a/arena/demo")
+auto_play = st.sidebar.toggle("自动演示", value=True)
 
-class DashboardState:
-    """仪表板状态管理"""
-    
-    def __init__(self):
-        self.online_boxes = 0
-        self.saved_amount = 0.0
-        self.avg_latency = 0.0
-        self.logs = deque(maxlen=100)
-        self.trades = []
-        self.last_update = time.time()
-    
-    def add_log(self, message: str, log_type: str = "info"):
-        """添加日志"""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        log_entry = {
-            'timestamp': timestamp,
-            'message': message,
-            'type': log_type,
-            'time': time.time()
-        }
-        self.logs.append(log_entry)
-    
-    def add_trade(self, trade_data: dict):
-        """添加交易"""
-        self.trades.append(trade_data)
-        if len(self.trades) > 50:
-            self.trades.pop(0)
+if mode == "Live WebSocket" and ws_url:
+    live_events = asyncio.run(_pull_ws_events(ws_url))
+    for event in live_events:
+        payload = event.get("payload", event) if isinstance(event, dict) else {}
+        state.push_event(payload)
+elif auto_play:
+    state.tick_mock()
 
-# 初始化状态
-if 'dashboard_state' not in st.session_state:
-    st.session_state.dashboard_state = DashboardState()
+st.markdown('<div class="main-title">PROJECT CLAW · A2A ARENA</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">CYBERPUNK NEGOTIATION SHOWCASE · BUYER vs SELLER · JUDGE CORE</div>', unsafe_allow_html=True)
 
-state = st.session_state.dashboard_state
+left, center, right = st.columns([1.05, 1.2, 1.05])
 
-# ═══════════════════════════════════════════════════════════════
-# 页面标题
-# ═══════════════════════════════════════════════════════════════
+with left:
+    st.markdown('<div class="arena-card">', unsafe_allow_html=True)
+    st.markdown('<div class="avatar buyer">C</div>', unsafe_allow_html=True)
+    st.markdown('<div class="lane-title buyer">C端买手</div>', unsafe_allow_html=True)
+    for line in list(state.left_log) or ["等待战斗开始... 正在扫描掌柜弱点。"]:
+        st.markdown(f'<div class="thought-box">{line}</div>', unsafe_allow_html=True)
+    st.markdown('<div class="tiny-note">蓝光脑回路 · 实时打印买手内心独白</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown("""
-    <div style="text-align: center; margin-bottom: 30px;">
-        <h1 style="color: #00ff41; font-size: 48px; margin: 0;">🦞 Project Claw</h1>
-        <p style="color: #a0a0a0; font-size: 18px; margin: 10px 0;">AI 驱动的极速砍价系统 - 融资路演上帝视角</p>
-        <p style="color: #ff006e; font-size: 14px;">实时交易监控 | 智能谈判展示 | 物理拓扑可视化</p>
-    </div>
-""", unsafe_allow_html=True)
+with center:
+    st.markdown('<div class="arena-card arena-center">', unsafe_allow_html=True)
+    st.markdown('<div class="judge-title">判 决 擂 台</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="judge-ring"><div class="price">¥ {state.price:.2f}</div></div>', unsafe_allow_html=True)
+    st.progress(min(max((12 - state.countdown) / 12, 0.0), 1.0), text=f'第 {state.turn} 回合收敛进度 · 倒计时 {state.countdown}s')
+    st.markdown('<div class="judge-feed">', unsafe_allow_html=True)
+    for line in list(state.judge_log) or ["裁判核心加载中... 准备接收双方论证。"]:
+        st.markdown(f'<div class="judge-row">⚖️ {line}</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('<div class="tiny-note">跳动价格 + 回合进度条 + JudgeNode 仲裁轨迹</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-# ═══════════════════════════════════════════════════════════════
-# 顶部指标阵列
-# ═══════════════════════════════════════════════════════════════
+with right:
+    st.markdown('<div class="arena-card">', unsafe_allow_html=True)
+    st.markdown('<div class="avatar seller">B</div>', unsafe_allow_html=True)
+    st.markdown('<div class="lane-title seller">B端掌柜</div>', unsafe_allow_html=True)
+    for line in list(state.right_log) or ["掌柜静候来价... 正在盘算库存与利润。"]:
+        st.markdown(f'<div class="thought-box seller">{line}</div>', unsafe_allow_html=True)
+    st.markdown('<div class="tiny-note">橙光掌柜 · 实时打印商家内心独白</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown("### 📊 实时指标")
+if state.success:
+    if st_lottie is not None:
+        st_lottie(SUCCESS_LOTTIE, speed=1, loop=True, height=320, key=f"success_{state.turn}")
+    st.markdown('<div class="success-banner"><div class="success-text">交易达成！已绕过大厂抽成！</div></div>', unsafe_allow_html=True)
 
-col1, col2, col3 = st.columns(3)
-
-# 模拟数据更新
-state.online_boxes = random.randint(150, 250)
-state.saved_amount = random.uniform(50000, 150000)
-state.avg_latency = random.uniform(80, 200)
-
-with col1:
-    st.metric(
-        label="🟢 全网在线黑盒子数",
-        value=f"{state.online_boxes}",
-        delta=f"+{random.randint(1, 10)}",
-        delta_color="normal"
-    )
-
-with col2:
-    st.metric(
-        label="💰 今日拦截大厂抽成金额",
-        value=f"¥{state.saved_amount:,.0f}",
-        delta=f"+¥{random.uniform(1000, 5000):,.0f}",
-        delta_color="normal"
-    )
-
-with col3:
-    st.metric(
-        label="⚡ A2A 撮合平均延迟",
-        value=f"{state.avg_latency:.0f}ms",
-        delta=f"-{random.uniform(5, 20):.0f}ms",
-        delta_color="inverse"
-    )
-
-st.divider()
-
-# ═══════════════════════════════════════════════════════════════
-# 中心流数据瀑布 + 右侧物理拓扑
-# ═══════════════════════════════════════════════════════════════
-
-col_console, col_map = st.columns([1.2, 1])
-
-# ─────────────────────────────────────────────────────────────
-# 左侧：实时谈判日志
-# ─────────────────────────────────────────────────────────────
-
-with col_console:
-    st.markdown("### 📡 实时谈判明文")
-    
-    # 模拟谈判日志
-    sample_logs = [
-        ("🔵 买手 Agent", "发起意图: 商品=龙虾, 预算=¥15.0", "buyer"),
-        ("🟠 商家 Agent", "收到意图, 初始报价=¥18.0", "seller"),
-        ("🔵 买手 Agent", "分析: 预算差距 20%, 启动谈判", "buyer"),
-        ("🟠 商家 Agent", "评估: 客户信用度 95%, 可让步", "seller"),
-        ("🔵 买手 Agent", "反报价: ¥14.5, 理由: 市场均价", "buyer"),
-        ("🟠 商家 Agent", "考虑中... 成本 ¥12.0, 利润空间", "seller"),
-        ("🔵 买手 Agent", "最终报价: ¥13.5, 即时成交", "buyer"),
-        ("🟠 商家 Agent", "接受! 成交价 ¥13.5", "seller"),
-        ("✅ 系统", "MATCH_SUCCESS: 交易已撮合", "match"),
-    ]
-    
-    # 添加日志到状态
-    for agent, message, log_type in sample_logs:
-        state.add_log(f"{agent}: {message}", log_type)
-    
-    # 显示日志
-    log_html = '<div class="console-log">'
-    for log in list(state.logs)[-20:]:
-        log_class = f"log-entry {log['type']}"
-        log_html += f'<div class="{log_class}">[{log["timestamp"]}] {log["message"]}</div>'
-    log_html += '</div>'
-    
-    st.markdown(log_html, unsafe_allow_html=True)
-
-# ─────────────────────────────────────────────────────────────
-# 右侧：3D 地图拓扑
-# ─────────────────────────────────────────────────────────────
-
-with col_map:
-    st.markdown("### 🗺️ 物理拓扑")
-    
-    # 上海市中心坐标
-    shanghai_center = [121.4737, 31.2304]
-    
-    # 生成随机交易点
-    trades_data = []
-    for i in range(5):
-        buyer_lat = shanghai_center[1] + random.uniform(-0.1, 0.1)
-        buyer_lon = shanghai_center[0] + random.uniform(-0.1, 0.1)
-        seller_lat = shanghai_center[1] + random.uniform(-0.1, 0.1)
-        seller_lon = shanghai_center[0] + random.uniform(-0.1, 0.1)
-        
-        trades_data.append({
-            'buyer': [buyer_lon, buyer_lat],
-            'seller': [seller_lon, seller_lat],
-            'amount': random.uniform(10, 50),
-            'status': 'matched'
-        })
-    
-    # 创建飞线数据
-    arc_data = []
-    for trade in trades_data:
-        arc_data.append({
-            'source': trade['buyer'],
-            'target': trade['seller'],
-            'amount': trade['amount']
-        })
-    
-    # 创建 pydeck 图层
-    arc_layer = pdk.Layer(
-        'ArcLayer',
-        data=pd.DataFrame(arc_data),
-        get_source_position='source',
-        get_target_position='target',
-        get_source_color=[0, 255, 65],  # 荧光绿
-        get_target_color=[255, 0, 110],  # 电光紫
-        get_width=3,
-        get_tilt=45,
-        pickable=True,
-        auto_highlight=True,
-    )
-    
-    # 创建散点层（交易点）
-    scatter_data = []
-    for trade in trades_data:
-        scatter_data.append({'position': trade['buyer'], 'type': 'buyer'})
-        scatter_data.append({'position': trade['seller'], 'type': 'seller'})
-    
-    scatter_layer = pdk.Layer(
-        'ScatterplotLayer',
-        data=pd.DataFrame(scatter_data),
-        get_position='position',
-        get_fill_color='[0, 255, 65]',
-        get_radius=500,
-        pickable=True,
-    )
-    
-    # 创建地图
-    view_state = pdk.ViewState(
-        longitude=shanghai_center[0],
-        latitude=shanghai_center[1],
-        zoom=11,
-        pitch=45,
-        bearing=0
-    )
-    
-    map_style = "mapbox://styles/mapbox/dark-v11"
-    
-    r = pdk.Deck(
-        layers=[arc_layer, scatter_layer],
-        initial_view_state=view_state,
-        map_style=map_style,
-        tooltip={"text": "交易撮合中..."}
-    )
-    
-    st.pydeck_chart(r, use_container_width=True)
-
-st.divider()
-
-# ═══════════════════════════════════════════════════════════════
-# 底部：交易统计
-# ═══════════════════════════════════════════════════════════════
-
-st.markdown("### 📈 交易统计")
-
-stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
-
-with stat_col1:
-    st.metric("今日交易数", f"{random.randint(500, 1000)}", "+50")
-
-with stat_col2:
-    st.metric("成功率", f"{random.uniform(95, 99):.1f}%", "+0.5%")
-
-with stat_col3:
-    st.metric("平均节省", f"¥{random.uniform(2, 5):.2f}", "+¥0.50")
-
-with stat_col4:
-    st.metric("用户满意度", f"{random.uniform(4.5, 5.0):.1f}/5.0", "+0.1")
-
-# ═══════════════════════════════════════════════════════════════
-# 自动刷新
-# ═══════════════════════════════════════════════════════════════
+st.code("""def generate_mock_a2a_events():
+    buyer_prices = [14.0, 14.4, 14.8, 15.0]
+    seller_prices = [18.0, 16.6, 15.6, 15.0]
+    # 依次产出 BuyerNode / SellerNode / JudgeNode 事件
+    # 最后一轮 JudgeNode 发出 status='SUCCESS'
+""", language="python")
 
 st.markdown("""
-    <script>
-        // 每 3 秒自动刷新一次
-        setTimeout(function() {
-            window.location.reload();
-        }, 3000);
-    </script>
-""", unsafe_allow_html=True)
-
-# 页脚
-st.markdown("""
-    <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid rgba(0, 255, 65, 0.1);">
-        <p style="color: #a0a0a0; font-size: 12px;">
-            Project Claw © 2026 | 融资路演上帝视角 | 实时数据更新中...
-        </p>
-    </div>
+<meta http-equiv="refresh" content="1.1">
+<div style="text-align:center;color:#66758d;font-size:12px;margin-top:14px;">
+    Demo 自动刷新中 · Mock 模式可离线跑满整场双 AI 吵架动画
+</div>
 """, unsafe_allow_html=True)

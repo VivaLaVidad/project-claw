@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Project Claw v15.4 - utils/api.js
  * 工业级 HTTP 层：多环境自动切换、JWT 刷新、A2A 双重鉴权、指数退避、SSE 可销毁流
  */
@@ -39,7 +39,7 @@ function _getEnvVersion() {
 function _resolveDefaultBaseUrl() {
   const envVersion = _getEnvVersion();
   if (envVersion === 'develop') return CONFIG.tencentCloud;
-  if (envVersion === 'trial') return CONFIG.production;
+  if (envVersion === 'trial') return CONFIG.tencentCloud;
   return CONFIG.production;
 }
 
@@ -71,6 +71,22 @@ function setToken(t) { if (t) wx.setStorageSync(TOKEN_KEY, t); }
 function clearToken() { wx.removeStorageSync(TOKEN_KEY); }
 function getWsBaseUrl() {
   return getBaseUrl().replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
+}
+
+function _isTencentBaseUrl(baseUrl) {
+  return String(baseUrl || '').replace(/\/$/, '') === CONFIG.tencentCloud;
+}
+
+function _shouldFallbackToRailway(err) {
+  const detail = String((err && (err.detail || err.errMsg || err.message)) || '').toLowerCase();
+  if (!detail) return false;
+  return detail.includes('request:fail')
+    || detail.includes('timeout')
+    || detail.includes('connection closed')
+    || detail.includes('err_connection_closed')
+    || detail.includes('err_connection_reset')
+    || detail.includes('err_timed_out')
+    || detail.includes('ssl');
 }
 
 function preflightCheck() {
@@ -118,6 +134,29 @@ function _sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function _normalizeResponseData(data) {
+  if (typeof data !== 'string') return data;
+  const text = data.trim();
+  if (!text) return data;
+  if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+    try {
+      return JSON.parse(text);
+    } catch (_) {
+      return data;
+    }
+  }
+  return data;
+}
+
+function _rememberDebugResponse(url, data) {
+  try {
+    const app = getApp && getApp();
+    if (!app || !app.globalData) return;
+    if (!app.globalData.lastApiResponses) app.globalData.lastApiResponses = {};
+    app.globalData.lastApiResponses[url] = data;
+  } catch (_) {}
+}
+
 async function _buildA2AHeaders({ url, method, body }) {
   const signer = _getA2ASigner();
   if (!signer) return {};
@@ -140,8 +179,9 @@ async function _buildA2AHeaders({ url, method, body }) {
   };
 }
 
-function _request({ url, method = 'GET', data, auth = true, a2aSign = false, _retry = 0 }) {
+function _request({ url, method = 'GET', data, auth = true, a2aSign = false, _retry = 0, baseUrl = '', _allowRailwayFallback = true }) {
   return new Promise((resolve, reject) => {
+    const requestBaseUrl = String(baseUrl || getBaseUrl()).replace(/\/$/, '');
     const header = { 'Content-Type': 'application/json' };
     if (auth) {
       const t = getToken();
@@ -156,18 +196,18 @@ function _request({ url, method = 'GET', data, auth = true, a2aSign = false, _re
         }
       } catch (_) {
         // 未配置 RSA 签名器时，允许回退到无签名请求
-        return;
       }
 
       wx.request({
-        url: `${getBaseUrl()}${url}`,
+        url: `${requestBaseUrl}${url}`,
         method,
         data,
         header,
         timeout: TIMEOUT_MS,
         success(res) {
+          const responseData = _normalizeResponseData(res.data);
           if (res.statusCode >= 200 && res.statusCode < 300) {
-            resolve(res.data);
+            resolve(responseData);
             return;
           }
 
@@ -179,7 +219,7 @@ function _request({ url, method = 'GET', data, auth = true, a2aSign = false, _re
             loginAndGetToken(cid)
               .then(async () => {
                 await _sleep(_calcBackoffMs(_retry));
-                return _request({ url, method, data, auth, a2aSign, _retry: _retry + 1 });
+                return _request({ url, method, data, auth, a2aSign, _retry: _retry + 1, baseUrl: requestBaseUrl, _allowRailwayFallback: false });
               })
               .then(resolve)
               .catch(reject);
@@ -188,13 +228,13 @@ function _request({ url, method = 'GET', data, auth = true, a2aSign = false, _re
 
           if (res.statusCode >= 500 && _retry < MAX_RETRY) {
             _sleep(_calcBackoffMs(_retry))
-              .then(() => _request({ url, method, data, auth, a2aSign, _retry: _retry + 1 }))
+              .then(() => _request({ url, method, data, auth, a2aSign, _retry: _retry + 1, baseUrl: requestBaseUrl, _allowRailwayFallback: false }))
               .then(resolve)
               .catch(reject);
             return;
           }
 
-          const body = res.data || {};
+          const body = _normalizeResponseData(res.data) || {};
           reject({
             code: res.statusCode,
             detail: body.detail || body.message || `HTTP_${res.statusCode}`,
@@ -203,12 +243,23 @@ function _request({ url, method = 'GET', data, auth = true, a2aSign = false, _re
         fail(err) {
           if (_retry < MAX_RETRY) {
             _sleep(_calcBackoffMs(_retry))
-              .then(() => _request({ url, method, data, auth, a2aSign, _retry: _retry + 1 }))
+              .then(() => _request({ url, method, data, auth, a2aSign, _retry: _retry + 1, baseUrl: requestBaseUrl, _allowRailwayFallback: false }))
               .then(resolve)
               .catch(reject);
             return;
           }
-          reject({ code: 0, detail: (err && err.errMsg) || 'network_error' });
+          const networkErr = { code: 0, detail: (err && err.errMsg) || 'network_error' };
+          if (_allowRailwayFallback && _isTencentBaseUrl(requestBaseUrl) && _shouldFallbackToRailway(networkErr)) {
+            _request({ url, method, data, auth, a2aSign, baseUrl: CONFIG.railway, _allowRailwayFallback: false })
+              .then((res) => {
+                setBaseUrl(CONFIG.railway);
+                try { wx.showToast({ title: '腾讯云链路波动，已切换备用线路', icon: 'none', duration: 2200 }); } catch (_) {}
+                resolve(res);
+              })
+              .catch(reject);
+            return;
+          }
+          reject(networkErr);
         },
       });
     };
@@ -284,6 +335,8 @@ function requestTradeStream(payload, handlers = {}, opts = {}) {
   let sseBuffer = '';
   let doneBundle = null;
   let retryCount = 0;
+  let activeBaseUrl = getBaseUrl();
+  let railwayFallbackUsed = false;
   const maxReconnect = typeof opts.maxReconnect === 'number' ? opts.maxReconnect : 4;
 
   const cleanup = () => {
@@ -337,11 +390,10 @@ function requestTradeStream(payload, handlers = {}, opts = {}) {
         signed = await _buildA2AHeaders({ url: '/api/v1/trade/request/stream', method: 'POST', body: payload || {} });
       } catch (_) {
         // 未配置 RSA 签名器时，允许回退到无签名请求
-        return;
       }
 
       requestTask = wx.request({
-        url: `${getBaseUrl()}/api/v1/trade/request/stream`,
+        url: `${activeBaseUrl}/api/v1/trade/request/stream`,
         method: 'POST',
         data: payload,
         timeout: TIMEOUT_MS,
@@ -380,13 +432,23 @@ function requestTradeStream(payload, handlers = {}, opts = {}) {
         },
         fail(err) {
           if (destroyed) return;
+          const streamErr = { code: 0, detail: (err && err.errMsg) || 'stream_network_error' };
           if (retryCount < maxReconnect) {
             retryCount += 1;
             reconnectTimer = setTimeout(startOnce, _calcBackoffMs(retryCount));
             return;
           }
+          if (!railwayFallbackUsed && _isTencentBaseUrl(activeBaseUrl) && _shouldFallbackToRailway(streamErr)) {
+            railwayFallbackUsed = true;
+            retryCount = 0;
+            activeBaseUrl = CONFIG.railway;
+            setBaseUrl(activeBaseUrl);
+            try { wx.showToast({ title: '流式链路已切换备用线路', icon: 'none', duration: 2200 }); } catch (_) {}
+            reconnectTimer = setTimeout(startOnce, 80);
+            return;
+          }
           cleanup();
-          reject({ code: 0, detail: (err && err.errMsg) || 'stream_network_error' });
+          reject(streamErr);
         },
       });
 
@@ -432,3 +494,11 @@ module.exports = {
   getOrderHistory,
   getTradeSnapshot,
 };
+
+
+
+
+
+
+
+
